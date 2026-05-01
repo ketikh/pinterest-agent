@@ -1,0 +1,90 @@
+"""Application configuration — loaded from environment variables."""
+
+import os
+from typing import Optional
+
+
+class Config:
+    """Base configuration shared by all environments."""
+
+    SECRET_KEY: str = os.environ.get("FLASK_SECRET_KEY", "dev-secret-change-in-prod")
+    SQLALCHEMY_TRACK_MODIFICATIONS: bool = False
+    MAX_CONTENT_LENGTH: int = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "10")) * 1024 * 1024
+
+    # Scheduler
+    SCHEDULER_TIMEZONE: str = os.environ.get("SCHEDULER_TIMEZONE", "Asia/Tbilisi")
+    MORNING_JOB_HOUR: int = int(os.environ.get("MORNING_JOB_HOUR", "9"))
+    MORNING_JOB_MINUTE: int = int(os.environ.get("MORNING_JOB_MINUTE", "0"))
+    EVENING_JOB_HOUR: int = int(os.environ.get("EVENING_JOB_HOUR", "20"))
+    EVENING_JOB_MINUTE: int = int(os.environ.get("EVENING_JOB_MINUTE", "0"))
+
+    # Business logic
+    MAX_REGENERATIONS: int = int(os.environ.get("MAX_REGENERATIONS", "3"))
+    RECENT_PIN_CACHE_DAYS: int = int(os.environ.get("RECENT_PIN_CACHE_DAYS", "7"))
+    DEFAULT_TENANT_ID: str = "default"
+
+    # Pinterest
+    PINTEREST_APP_ID: Optional[str] = os.environ.get("PINTEREST_APP_ID")
+    PINTEREST_ACCESS_TOKEN: Optional[str] = os.environ.get("PINTEREST_ACCESS_TOKEN")
+    PINTEREST_BOARD_ID: Optional[str] = os.environ.get("PINTEREST_BOARD_ID")
+
+    # kie.ai
+    KIEAI_API_KEY: Optional[str] = os.environ.get("KIEAI_API_KEY")
+    KIEAI_MODEL: str = os.environ.get("KIEAI_MODEL", "nano-banana-pro")
+
+    # Cloudinary
+    CLOUDINARY_CLOUD_NAME: Optional[str] = os.environ.get("CLOUDINARY_CLOUD_NAME")
+    CLOUDINARY_API_KEY: Optional[str] = os.environ.get("CLOUDINARY_API_KEY")
+    CLOUDINARY_API_SECRET: Optional[str] = os.environ.get("CLOUDINARY_API_SECRET")
+
+    # Discord
+    DISCORD_BOT_TOKEN: Optional[str] = os.environ.get("DISCORD_BOT_TOKEN")
+    DISCORD_CHANNEL_ID: Optional[str] = os.environ.get("DISCORD_CHANNEL_ID")
+    DISCORD_PUBLIC_KEY: Optional[str] = os.environ.get("DISCORD_PUBLIC_KEY")
+
+    # Meta
+    META_ACCESS_TOKEN: Optional[str] = os.environ.get("META_ACCESS_TOKEN")
+    META_PAGE_ID: Optional[str] = os.environ.get("META_PAGE_ID")
+    META_INSTAGRAM_ACCOUNT_ID: Optional[str] = os.environ.get("META_INSTAGRAM_ACCOUNT_ID")
+    META_API_VERSION: str = os.environ.get("META_API_VERSION", "v21.0")
+
+
+def _dev_db_uri() -> str:
+    """Compute absolute SQLite URI for development."""
+    env_url = os.environ.get("DATABASE_URL")
+    if env_url:
+        return env_url
+    base = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+    instance_dir = os.path.join(base, "instance")
+    os.makedirs(instance_dir, exist_ok=True)
+    return f"sqlite:///{os.path.join(instance_dir, 'pinterest_agent.db')}"
+
+
+class DevelopmentConfig(Config):
+    DEBUG: bool = True
+    SQLALCHEMY_ECHO: bool = False
+    SQLALCHEMY_DATABASE_URI: str = _dev_db_uri()
+
+
+class TestingConfig(Config):
+    TESTING: bool = True
+    SQLALCHEMY_DATABASE_URI: str = "sqlite:///:memory:"
+    WTF_CSRF_ENABLED: bool = False
+    SECRET_KEY: str = "test-secret-key"
+
+
+class ProductionConfig(Config):
+    DEBUG: bool = False
+    SQLALCHEMY_DATABASE_URI: str = os.environ["DATABASE_URL"]
+
+
+_configs = {
+    "development": DevelopmentConfig,
+    "testing": TestingConfig,
+    "production": ProductionConfig,
+}
+
+
+def get_config() -> "type[Config]":
+    env = os.environ.get("FLASK_ENV", "development")
+    return _configs.get(env, DevelopmentConfig)

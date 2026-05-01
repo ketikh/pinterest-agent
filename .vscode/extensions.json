@@ -1,0 +1,15 @@
+{
+  "recommendations": [
+    "anthropic.claude-code",
+    "ms-python.python",
+    "ms-python.black-formatter",
+    "ms-python.flake8",
+    "ms-python.isort",
+    "ms-python.vscode-pylance",
+    "ms-python.debugpy",
+    "mtxr.sqltools",
+    "cweijan.vscode-database-client2",
+    "redhat.vscode-yaml",
+    "donjayamanne.githistory"
+  ]
+}

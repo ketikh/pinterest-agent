@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login — AI Bag Agent</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      background: #1a1d23;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .login-card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 2.5rem;
+      width: 100%;
+      max-width: 380px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.4);
+    }
+    .brand { font-size: 1.5rem; font-weight: 800; color: #1a1d23; }
+    .brand span { color: #6366f1; }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="brand mb-1">🎒 AI Bag <span>Agent</span></div>
+    <p class="text-muted small mb-4">Admin Panel</p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+        <div class="alert alert-{{ cat }} py-2 small">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('auth.login') }}" novalidate>
+      {{ form.hidden_tag() }}
+
+      <div class="mb-3">
+        {{ form.username.label(class="form-label small fw-semibold") }}
+        {{ form.username(class="form-control" + (' is-invalid' if form.username.errors else ''), autocomplete="username") }}
+        {% for err in form.username.errors %}
+          <div class="invalid-feedback">{{ err }}</div>
+        {% endfor %}
+      </div>
+
+      <div class="mb-4">
+        {{ form.password.label(class="form-label small fw-semibold") }}
+        {{ form.password(class="form-control" + (' is-invalid' if form.password.errors else ''), autocomplete="current-password") }}
+        {% for err in form.password.errors %}
+          <div class="invalid-feedback">{{ err }}</div>
+        {% endfor %}
+      </div>
+
+      <button type="submit" class="btn btn-dark w-100 fw-semibold">
+        შესვლა
+      </button>
+    </form>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

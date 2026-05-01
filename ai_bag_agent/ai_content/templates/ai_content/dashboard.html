@@ -1,0 +1,61 @@
+{% extends "ai_content/base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="mb-0 fw-bold">Dashboard</h4>
+  <span class="text-muted small">AI Bag Content Agent</span>
+</div>
+
+<!-- Stats row -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="text-muted small mb-1"><i class="bi bi-collection me-1"></i>Queue (pending)</div>
+      <div class="stat-number text-warning">{{ queue_count }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="text-muted small mb-1"><i class="bi bi-hourglass-split me-1"></i>Awaiting Review</div>
+      <div class="stat-number text-primary">{{ pending_count }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="text-muted small mb-1"><i class="bi bi-check-circle me-1"></i>Approved Today</div>
+      <div class="stat-number text-success">{{ approved_count }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="text-muted small mb-1"><i class="bi bi-megaphone me-1"></i>Total Posted</div>
+      <div class="stat-number text-secondary">{{ posted_count }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- Daily workflow -->
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="stat-card">
+      <h6 class="fw-bold mb-3"><i class="bi bi-sunrise me-1 text-warning"></i>Daily Workflow</h6>
+      <ol class="mb-0 text-muted small">
+        <li class="mb-1"><strong>09:00</strong> — Queue-დან ფოტო → kie.ai generation → Discord</li>
+        <li class="mb-1">დღის განმავლობაში — Discord-ზე ✅ / ❌ / 🔄</li>
+        <li class="mb-0"><strong>20:00</strong> — Approved → Facebook + Instagram</li>
+      </ol>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="stat-card">
+      <h6 class="fw-bold mb-3"><i class="bi bi-info-circle me-1 text-info"></i>Build Progress</h6>
+      <div class="text-muted small">
+        <p class="mb-1">✅ Stage 0: Skeleton + Auth</p>
+        <p class="mb-1 text-muted">⏳ Stage 1: kie.ai Generator — <em>next</em></p>
+        <p class="mb-0 text-muted">⏸ Stages 2–14: See PLAN.md</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

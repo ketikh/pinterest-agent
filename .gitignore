@@ -1,0 +1,119 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# Secrets — NEVER commit these
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+credentials.json
+serviceAccountKey.json
+secrets/
+*.secret
+
+# Flask
+instance/
+.webassets-cache
+flask_session/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE
+.idea/
+.vscode/*.code-workspace
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+*.out
+
+# Build / generated
+dist/
+build/
+out/
+*.min.js
+*.min.css
+
+# Node (if any frontend tooling)
+node_modules/
+.next/
+.nuxt/
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Uploads / generated media (store in Cloudinary, not git)
+uploads/
+generated/
+media/
+
+# Migrations (track only if using Flask-Migrate)
+# instance/
+
+# Railway
+.railway/
