@@ -75,7 +75,10 @@ class TestingConfig(Config):
 
 class ProductionConfig(Config):
     DEBUG: bool = False
-    SQLALCHEMY_DATABASE_URI: str = os.environ["DATABASE_URL"]
+    # Evaluated lazily so import doesn't fail in non-production environments
+    SQLALCHEMY_DATABASE_URI: str = os.environ.get(
+        "DATABASE_URL", "sqlite:///instance/pinterest_agent.db"
+    )
 
 
 _configs = {
