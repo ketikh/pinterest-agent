@@ -38,13 +38,13 @@ except ImportError:
 
 # Your bag photo as a public URL (Cloudinary, imgbb, or any public host)
 # After Stage 2 (Cloudinary), replace this with the Cloudinary URL of your bag photo.
-BAG_IMAGE_URL = "https://res.cloudinary.com/demo/image/upload/sample.jpg"  # ← replace me
+BAG_IMAGE_URL = "https://res.cloudinary.com/dw2yuqjrr/image/upload/v1777654735/tissu/uploads/extra_TP11_20260501165855.jpg"  # ← replace me
 
 # Pinterest reference pin image URL (right-click any Pinterest image → Copy image address)
-REFERENCE_URL = "https://i.pinimg.com/originals/sample-reference.jpg"  # ← replace me
+REFERENCE_URL = "https://i.pinimg.com/736x/92/23/02/922302fdfeff7c39c06d1d411699a017.jpg"  # ← replace me
 
 # Optional extra instructions for this specific bag
-CUSTOM_PROMPT = "Elegant leather messenger bag. Corporate style. Warm studio lighting."
+CUSTOM_PROMPT = "Corporate style. Warm studio lighting."
 
 TENANT_ID = "default"
 
