@@ -1,15 +1,15 @@
 """Pinterest API v5 client.
 
-Flow:
-  1. GET /v5/boards/{board_id}/pins  → list of pins (paginated, up to 250)
-  2. Filter out recently-used pins   → RecentPinCache (7-day window)
-  3. Pick random pin                 → PinData
-  4. Mark pin as used                → RecentPinCache
+Token strategy:
+  Trial mode  — 24h access token, manual regeneration.
+                If token is expired, functions return {"success": False,
+                "error": "Token expired..."} so admin sees it clearly.
+  Production  — PINTEREST_REFRESH_TOKEN in .env → auto-refresh before expiry.
+                Refreshed token is persisted to DB settings table.
 
-Token refresh:
-  - Access token expires every 24h (trial) / 60 days (approved)
-  - refresh_access_token() exchanges PINTEREST_REFRESH_TOKEN for a new
-    access token and updates PINTEREST_ACCESS_TOKEN in DB settings
+Board ID resolution:
+  PINTEREST_BOARD_URL (env) is resolved to a numeric board_id once,
+  then cached in DB settings so repeated calls skip the API lookup.
 """
 
 from __future__ import annotations
@@ -19,7 +19,6 @@ import os
 import random
 import re
 import time
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -27,219 +26,210 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-PINTEREST_API = "https://api.pinterest.com/v5"
-PINTEREST_TOKEN_URL = "https://api.pinterest.com/v5/oauth/token"
+BASE_URL = "https://api.pinterest.com/v5"
+TOKEN_URL = "https://api.pinterest.com/v5/oauth/token"
 
-# Largest image size preferred for kie.ai compatibility (must be JPG)
-_IMAGE_SIZE_PREFERENCE = ["1200x", "736x", "600x", "400x300", "150x150"]
+_IMAGE_SIZE_PREFERENCE = ["1200x", "originals", "736x", "564x", "236x"]
 
 RECENT_CACHE_DAYS = int(os.environ.get("RECENT_PIN_CACHE_DAYS", "7"))
 
-
 # ---------------------------------------------------------------------------
-# Data types
-# ---------------------------------------------------------------------------
-
-@dataclass
-class PinData:
-    pin_id: str
-    image_url: str   # public HTTPS JPG URL
-    title: str
-    description: str
-    pin_url: str
-
-
-# ---------------------------------------------------------------------------
-# Public interface
+# Public: board discovery
 # ---------------------------------------------------------------------------
 
-def get_random_reference_pin(
-    board_id: str,
-    tenant_id: str = "default",
-    exclude_recent: bool = True,
-) -> Optional[PinData]:
-    """Return a random pin from the board, avoiding recently-used ones.
-
-    Args:
-        board_id: Pinterest board ID.
-        tenant_id: Tenant identifier (used for cache isolation).
-        exclude_recent: If True, skip pins used within RECENT_PIN_CACHE_DAYS.
+def get_user_boards(tenant_id: str = "default") -> list:
+    """GET /v5/boards — returns list of user's boards.
 
     Returns:
-        PinData or None if no suitable pin found.
+        list of dicts: {id, name, url, pin_count, privacy}
     """
-    token = _get_access_token()
+    token = _get_token()
     if not token:
-        logger.error("Pinterest access token not configured")
-        return None
+        logger.error("Pinterest token not configured")
+        return []
 
-    pins = _fetch_board_pins(board_id, token)
-    if not pins:
-        logger.warning("No pins returned from board %s", board_id)
-        return None
+    headers = _headers(token)
+    boards = []
+    bookmark = None
 
-    if exclude_recent:
-        recent_ids = _get_recent_pin_ids(tenant_id)
-        pins = [p for p in pins if p["id"] not in recent_ids]
+    while True:
+        params = {"page_size": 25}
+        if bookmark:
+            params["bookmark"] = bookmark
 
-    if not pins:
-        logger.warning("All pins recently used for tenant=%s — resetting cache", tenant_id)
-        _clear_pin_cache(tenant_id)
-        pins = _fetch_board_pins(board_id, token)
+        resp = _get(f"{BASE_URL}/boards", headers=headers, params=params)
+        if resp is None:
+            break
 
-    if not pins:
-        return None
+        data = resp.json()
+        for b in data.get("items", []):
+            boards.append({
+                "id": b["id"],
+                "name": b.get("name", ""),
+                "url": b.get("url", ""),
+                "pin_count": b.get("pin_count", 0),
+                "privacy": b.get("privacy", ""),
+            })
 
-    chosen = random.choice(pins)
-    image_url = _extract_image_url(chosen)
-    if not image_url:
-        logger.warning("Pin %s has no usable image URL", chosen.get("id"))
-        return None
+        bookmark = data.get("bookmark")
+        if not bookmark:
+            break
 
-    pin_data = PinData(
-        pin_id=chosen["id"],
-        image_url=image_url,
-        title=chosen.get("title") or "",
-        description=chosen.get("description") or "",
-        pin_url=f"https://www.pinterest.com/pin/{chosen['id']}/",
-    )
-
-    _mark_pin_used(pin_data.pin_id, tenant_id)
-    logger.info("Pinterest pin selected: %s", pin_data.pin_id)
-    return pin_data
+    return boards
 
 
-def refresh_access_token() -> Optional[str]:
-    """Use PINTEREST_REFRESH_TOKEN to get a new access token.
+def get_board_id_from_url(board_url: str, tenant_id: str = "default") -> Optional[str]:
+    """Resolve a Pinterest board URL to its numeric board ID.
+
+    Strategy:
+      1. Check DB settings cache (key: pinterest_board_id:{board_url})
+      2. Parse URL → owner/slug
+      3. GET /v5/boards → match by url or slug
+      4. Cache result in DB settings
 
     Returns:
-        New access token string, or None on failure.
+        board_id string or None if not found.
     """
-    refresh_token = os.environ.get("PINTEREST_REFRESH_TOKEN")
-    app_id = os.environ.get("PINTEREST_APP_ID")
-    app_secret = os.environ.get("PINTEREST_APP_SECRET")
+    cache_key = f"pinterest_board_id:{board_url}"
+    cached = _settings_get(cache_key)
+    if cached:
+        logger.debug("Board ID from cache: %s → %s", board_url, cached)
+        return cached
 
-    if not all([refresh_token, app_id, app_secret]):
-        logger.error(
-            "Cannot refresh Pinterest token — "
-            "PINTEREST_REFRESH_TOKEN, PINTEREST_APP_ID, or PINTEREST_APP_SECRET missing"
-        )
-        return None
+    slug = _slug_from_url(board_url)
+    boards = get_user_boards(tenant_id)
 
-    try:
-        resp = requests.post(
-            PINTEREST_TOKEN_URL,
-            auth=(app_id, app_secret),
-            data={
-                "grant_type": "refresh_token",
-                "refresh_token": refresh_token,
-                "scope": "boards:read,pins:read",
-            },
-            timeout=15,
-        )
-    except requests.RequestException as exc:
-        logger.error("Pinterest token refresh request failed: %s", exc)
-        return None
+    for board in boards:
+        board_slug = _slug_from_url(board.get("url", ""))
+        if board.get("url", "").rstrip("/") == board_url.rstrip("/"):
+            _settings_set(cache_key, board["id"])
+            return board["id"]
+        if slug and board_slug and slug == board_slug:
+            _settings_set(cache_key, board["id"])
+            return board["id"]
 
-    if resp.status_code != 200:
-        logger.error("Pinterest token refresh HTTP %d: %s", resp.status_code, resp.text[:200])
-        return None
-
-    body = resp.json()
-    new_token = body.get("access_token")
-    if not new_token:
-        logger.error("Pinterest token refresh response has no access_token: %s", body)
-        return None
-
-    os.environ["PINTEREST_ACCESS_TOKEN"] = new_token
-    _save_token_to_db(new_token, body.get("refresh_token"), body.get("expires_in"))
-
-    logger.info("Pinterest access token refreshed successfully")
-    return new_token
+    logger.error("Board not found for URL: %s — available: %s", board_url, [b["url"] for b in boards])
+    return None
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers
+# Public: pins
 # ---------------------------------------------------------------------------
 
-def _get_access_token() -> Optional[str]:
-    token = os.environ.get("PINTEREST_ACCESS_TOKEN")
-    if token:
-        return token
-    # Try DB settings as fallback
-    try:
-        from ..models import Setting
-        return Setting.get("pinterest_access_token")
-    except Exception:
-        return None
+def get_pins_from_board(board_id: str, page_size: int = 25) -> list:
+    """GET /v5/boards/{board_id}/pins — returns all pins (paginated).
 
+    Returns:
+        list of raw pin dicts from Pinterest API.
+    """
+    token = _get_token()
+    if not token:
+        return []
 
-def _fetch_board_pins(board_id: str, token: str, max_pins: int = 250) -> list:
-    """Fetch up to max_pins from the board using cursor-based pagination."""
-    headers = {"Authorization": f"Bearer {token}"}
-    pins: list = []
-    cursor: Optional[str] = None
+    headers = _headers(token)
+    pins = []
+    bookmark = None
 
-    while len(pins) < max_pins:
-        params: dict = {"page_size": 50}
-        if cursor:
-            params["bookmark"] = cursor
+    while True:
+        params = {"page_size": min(page_size, 25)}
+        if bookmark:
+            params["bookmark"] = bookmark
 
-        try:
-            resp = requests.get(
-                f"{PINTEREST_API}/boards/{board_id}/pins",
-                headers=headers,
-                params=params,
-                timeout=15,
-            )
-        except requests.RequestException as exc:
-            logger.warning("Pinterest board pins request failed: %s", exc)
+        resp = _get(f"{BASE_URL}/boards/{board_id}/pins", headers=headers, params=params)
+        if resp is None:
             break
 
-        if resp.status_code == 401:
-            logger.error("Pinterest token unauthorized — needs refresh")
-            break
+        data = resp.json()
+        pins.extend(data.get("items", []))
 
-        if resp.status_code != 200:
-            logger.warning("Pinterest API HTTP %d for board %s", resp.status_code, board_id)
-            break
-
-        body = resp.json()
-        items = body.get("items", [])
-        pins.extend(items)
-
-        cursor = body.get("bookmark")
-        if not cursor or not items:
+        bookmark = data.get("bookmark")
+        if not bookmark or not data.get("items"):
             break
 
     logger.debug("Fetched %d pins from board %s", len(pins), board_id)
     return pins
 
 
-def _extract_image_url(pin: dict) -> Optional[str]:
-    """Extract the best available image URL from a pin object, as JPG."""
+def get_random_pin(
+    board_url: str,
+    tenant_id: str = "default",
+    exclude_recent_days: int = RECENT_CACHE_DAYS,
+) -> dict:
+    """Main function used by the orchestrator.
+
+    Returns:
+        {success, pin_id, image_url, pin_url, alt_text, error}
+    """
+    token = _get_token()
+    if not token:
+        return _err("Pinterest token not set — add PINTEREST_ACCESS_TOKEN to .env")
+
+    # Resolve board URL → board ID
+    board_id = get_board_id_from_url(board_url, tenant_id)
+    if not board_id:
+        return _err(f"Could not resolve board ID from: {board_url}")
+
+    # Fetch pins
+    pins = get_pins_from_board(board_id)
+    if not pins:
+        return _err("Board has no pins or token expired")
+
+    # Filter recently used
+    recent_ids = get_recent_pin_ids(tenant_id, exclude_recent_days)
+    filtered = [p for p in pins if p["id"] not in recent_ids]
+
+    if not filtered:
+        logger.warning("All %d pins recently used — resetting cache for tenant=%s", len(pins), tenant_id)
+        cleanup_old_cache(days=0)  # clear all cache for this tenant
+        filtered = pins
+
+    chosen = random.choice(filtered)
+    pin_id = chosen["id"]
+
+    try:
+        image_url = get_best_image_url(chosen)
+    except ValueError:
+        return _err(f"Pin {pin_id} has no usable image URL")
+
+    # Convert WebP to JPG for kie.ai compatibility
+    image_url = _to_jpg_url(image_url)
+
+    mark_pin_as_used(pin_id, tenant_id)
+
+    return {
+        "success": True,
+        "pin_id": pin_id,
+        "image_url": image_url,
+        "pin_url": f"https://www.pinterest.com/pin/{pin_id}/",
+        "alt_text": chosen.get("description") or chosen.get("title") or None,
+        "error": None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Public: image URL helper
+# ---------------------------------------------------------------------------
+
+def get_best_image_url(pin: dict) -> str:
+    """Return the highest-resolution image URL available for a pin."""
     images = (pin.get("media") or {}).get("images") or {}
     for size in _IMAGE_SIZE_PREFERENCE:
         entry = images.get(size)
         if entry and entry.get("url"):
-            return _to_jpg_url(entry["url"])
-    return None
+            return entry["url"]
+    raise ValueError(f"No image URL found in pin {pin.get('id')}")
 
 
-def _to_jpg_url(url: str) -> str:
-    """Convert Pinterest WebP URL to JPG equivalent."""
-    # webp70/1200x/XX/XX/XX/hash.webp  →  736x/XX/XX/XX/hash.jpg
-    url = re.sub(r"/webp\d+/\d+x/", "/736x/", url)
-    url = re.sub(r"\.webp$", ".jpg", url)
-    return url
+# ---------------------------------------------------------------------------
+# Public: recent pin cache
+# ---------------------------------------------------------------------------
 
-
-def _get_recent_pin_ids(tenant_id: str) -> set:
-    """Return set of pin_ids used within the cache window."""
+def get_recent_pin_ids(tenant_id: str, days: int = RECENT_CACHE_DAYS) -> set:
+    """Return set of pin_ids used within the last N days."""
     try:
         from ..models import RecentPinCache
-        from ...extensions import db
-        cutoff = datetime.now(timezone.utc) - timedelta(days=RECENT_CACHE_DAYS)
+        from ..extensions import db
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         rows = (
             db.session.query(RecentPinCache.pin_id)
             .filter(
@@ -250,15 +240,15 @@ def _get_recent_pin_ids(tenant_id: str) -> set:
         )
         return {r.pin_id for r in rows}
     except Exception as exc:
-        logger.debug("Could not query RecentPinCache (no app context?): %s", exc)
+        logger.debug("RecentPinCache query skipped (no app context?): %s", exc)
         return set()
 
 
-def _mark_pin_used(pin_id: str, tenant_id: str) -> None:
-    """Insert or update pin usage in RecentPinCache."""
+def mark_pin_as_used(pin_id: str, tenant_id: str) -> None:
+    """Insert or refresh pin usage timestamp in recent_pin_cache."""
     try:
         from ..models import RecentPinCache
-        from ...extensions import db
+        from ..extensions import db
         existing = (
             db.session.query(RecentPinCache)
             .filter_by(pin_id=pin_id, tenant_id=tenant_id)
@@ -269,35 +259,183 @@ def _mark_pin_used(pin_id: str, tenant_id: str) -> None:
         else:
             db.session.add(RecentPinCache(pin_id=pin_id, tenant_id=tenant_id))
         db.session.commit()
+        logger.debug("Marked pin %s as used for tenant=%s", pin_id, tenant_id)
     except Exception as exc:
-        logger.debug("Could not mark pin as used (no app context?): %s", exc)
+        logger.debug("mark_pin_as_used skipped (no app context?): %s", exc)
 
 
-def _clear_pin_cache(tenant_id: str) -> None:
-    """Remove all cache entries for a tenant (reset variety control)."""
+def cleanup_old_cache(tenant_id: str = "default", days: int = 30) -> int:
+    """Delete cache entries older than N days. Returns deleted count."""
     try:
         from ..models import RecentPinCache
-        from ...extensions import db
-        db.session.query(RecentPinCache).filter_by(tenant_id=tenant_id).delete()
+        from ..extensions import db
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        deleted = (
+            db.session.query(RecentPinCache)
+            .filter(
+                RecentPinCache.tenant_id == tenant_id,
+                RecentPinCache.used_at < cutoff,
+            )
+            .delete()
+        )
         db.session.commit()
-        logger.info("Cleared pin cache for tenant=%s", tenant_id)
+        logger.info("Cleaned %d old pin cache entries for tenant=%s", deleted, tenant_id)
+        return deleted
     except Exception as exc:
-        logger.debug("Could not clear pin cache: %s", exc)
+        logger.debug("cleanup_old_cache skipped: %s", exc)
+        return 0
 
 
-def _save_token_to_db(
-    access_token: str,
-    refresh_token: Optional[str],
-    expires_in: Optional[int],
-) -> None:
-    """Persist refreshed tokens to DB settings table."""
+# ---------------------------------------------------------------------------
+# Token refresh (production)
+# ---------------------------------------------------------------------------
+
+def refresh_access_token() -> Optional[str]:
+    """Exchange PINTEREST_REFRESH_TOKEN for a new access token.
+
+    Trial mode: not used (tokens refreshed manually).
+    Production: called automatically when token is near expiry.
+    """
+    refresh_token = os.environ.get("PINTEREST_REFRESH_TOKEN")
+    app_id = os.environ.get("PINTEREST_APP_ID")
+    app_secret = os.environ.get("PINTEREST_APP_SECRET")
+
+    if not all([refresh_token, app_id, app_secret]):
+        logger.error(
+            "Cannot refresh token — PINTEREST_REFRESH_TOKEN / APP_ID / APP_SECRET missing"
+        )
+        return None
+
+    try:
+        resp = requests.post(
+            TOKEN_URL,
+            auth=(app_id, app_secret),
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+                "scope": "boards:read,pins:read",
+            },
+            timeout=15,
+        )
+    except requests.RequestException as exc:
+        logger.error("Token refresh request failed: %s", exc)
+        return None
+
+    if resp.status_code != 200:
+        logger.error("Token refresh HTTP %d: %s", resp.status_code, resp.text[:200])
+        return None
+
+    body = resp.json()
+    new_token = body.get("access_token")
+    if not new_token:
+        return None
+
+    os.environ["PINTEREST_ACCESS_TOKEN"] = new_token
+    _settings_set("pinterest_access_token", new_token)
+    if body.get("refresh_token"):
+        os.environ["PINTEREST_REFRESH_TOKEN"] = body["refresh_token"]
+        _settings_set("pinterest_refresh_token", body["refresh_token"])
+
+    expires_in = body.get("expires_in", 86400)
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+    _settings_set("pinterest_token_expires_at", expires_at.isoformat())
+
+    logger.info("Pinterest access token refreshed, expires %s", expires_at.isoformat())
+    return new_token
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+def _get_token() -> Optional[str]:
+    return os.environ.get("PINTEREST_ACCESS_TOKEN") or _settings_get("pinterest_access_token")
+
+
+def _headers(token: str) -> dict:
+    return {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+
+
+def _get(url: str, headers: dict, params: dict = None, retries: int = 3) -> Optional[requests.Response]:
+    """GET with retry on 429 and 5xx. Returns None on unrecoverable error."""
+    for attempt in range(1, retries + 1):
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=15)
+        except requests.RequestException as exc:
+            logger.warning("Pinterest GET error (attempt %d/%d): %s", attempt, retries, exc)
+            if attempt < retries:
+                time.sleep(2 ** attempt)
+            continue
+
+        if resp.status_code == 200:
+            return resp
+
+        if resp.status_code == 401:
+            logger.error(
+                "Pinterest token expired or invalid. "
+                "Trial token: regenerate manually at developers.pinterest.com"
+            )
+            return None
+
+        if resp.status_code == 429:
+            wait = int(resp.headers.get("Retry-After", 60))
+            logger.warning("Pinterest rate limited — waiting %ds", wait)
+            time.sleep(wait)
+            continue
+
+        if resp.status_code >= 500 and attempt < retries:
+            wait = 2 ** attempt
+            logger.warning("Pinterest %d (attempt %d/%d) — retrying in %ds",
+                           resp.status_code, attempt, retries, wait)
+            time.sleep(wait)
+            continue
+
+        logger.error("Pinterest HTTP %d for %s: %s", resp.status_code, url, resp.text[:200])
+        return None
+
+    return None
+
+
+def _slug_from_url(url: str) -> Optional[str]:
+    """Extract 'username/board-slug' from a Pinterest board URL."""
+    url = url.rstrip("/")
+    m = re.search(r"pinterest\.com/([^/]+/[^/]+)$", url)
+    return m.group(1) if m else None
+
+
+def _to_jpg_url(url: str) -> str:
+    """Convert Pinterest WebP URL to JPG."""
+    url = re.sub(r"/webp\d+/\d+x/", "/736x/", url)
+    url = re.sub(r"\.webp$", ".jpg", url)
+    return url
+
+
+def _settings_get(key: str) -> Optional[str]:
     try:
         from ..models import Setting
-        Setting.set("pinterest_access_token", access_token)
-        if refresh_token:
-            Setting.set("pinterest_refresh_token", refresh_token)
-        if expires_in:
-            expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
-            Setting.set("pinterest_token_expires_at", expires_at.isoformat())
-    except Exception as exc:
-        logger.debug("Could not save token to DB: %s", exc)
+        return Setting.get(key)
+    except Exception:
+        return None
+
+
+def _settings_set(key: str, value: str) -> None:
+    try:
+        from ..models import Setting
+        Setting.set(key, value)
+    except Exception:
+        pass
+
+
+def _err(message: str) -> dict:
+    logger.error("Pinterest client error: %s", message)
+    return {
+        "success": False,
+        "pin_id": None,
+        "image_url": None,
+        "pin_url": None,
+        "alt_text": None,
+        "error": message,
+    }

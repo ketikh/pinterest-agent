@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
-"""
-Stage 1 manual test — kie.ai Nano Banana Pro generator.
+"""Full pipeline test — Pinterest → kie.ai → Cloudinary.
 
 Usage:
-    1. Copy your bag photo to:  storage/bags/sample.jpg
-    2. Set environment:         source venv/bin/activate
-    3. Run:                     python scripts/test_ai_generator.py
+    source venv/bin/activate
+    python scripts/test_ai_generator.py
 
-Notes:
-    - The bag image must be accessible as a PUBLIC URL.
-      Option A: Paste a Cloudinary URL (after Stage 2)
-      Option B: Upload sample.jpg to any image host and paste the URL below.
-    - Reference URL can be any Pinterest pin image URL.
+Steps:
+    1. Get random reference pin from Pinterest board
+    2. Generate promotional photo with kie.ai (bag + reference)
+    3. Upload generated photo to Cloudinary
+    4. Print all URLs
 """
 
 from __future__ import annotations
@@ -21,11 +19,9 @@ import sys
 import time
 from pathlib import Path
 
-# Make sure the project root is on the path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-# Load .env
 try:
     from dotenv import load_dotenv
     load_dotenv(project_root / ".env")
@@ -33,18 +29,23 @@ except ImportError:
     pass
 
 # ---------------------------------------------------------------------------
-# CONFIG — change these two URLs before running
+# CONFIG
 # ---------------------------------------------------------------------------
 
-# Your bag photo as a public URL (Cloudinary, imgbb, or any public host)
-# After Stage 2 (Cloudinary), replace this with the Cloudinary URL of your bag photo.
-BAG_IMAGE_URL = "https://res.cloudinary.com/dw2yuqjrr/image/upload/v1777654735/tissu/uploads/extra_TP11_20260501165855.jpg"  # ← replace me
+# Bag photo — Cloudinary public URL of the bag to shoot
+BAG_IMAGE_URL = "https://res.cloudinary.com/dw2yuqjrr/image/upload/v1777654735/tissu/uploads/extra_TP11_20260501165855.jpg"
 
-# Pinterest reference pin image URL (right-click any Pinterest image → Copy image address)
-REFERENCE_URL = "https://i.pinimg.com/736x/92/23/02/922302fdfeff7c39c06d1d411699a017.jpg"  # ← replace me
+# Pinterest board to pull reference from (auto via API, or override below)
+BOARD_URL = os.environ.get(
+    "PINTEREST_BOARD_URL",
+    "https://www.pinterest.com/tissugeorgia/laptop-bags/",
+)
 
-# Optional extra instructions for this specific bag
-CUSTOM_PROMPT = "Corporate style. Warm studio lighting."
+# Optional manual reference override (leave empty to use Pinterest API)
+REFERENCE_URL_OVERRIDE = ""
+
+# Per-bag style notes (leave empty to use global prompt only)
+CUSTOM_PROMPT = ""
 
 TENANT_ID = "default"
 
@@ -52,57 +53,93 @@ TENANT_ID = "default"
 
 
 def main() -> None:
-    api_key = os.environ.get("KIE_AI_API_KEY") or os.environ.get("KIEAI_API_KEY")
-    if not api_key:
-        print("ERROR: KIE_AI_API_KEY not found in environment or .env file")
-        sys.exit(1)
+    print("=" * 60)
+    print("Full Pipeline: Pinterest → kie.ai → Cloudinary")
+    print("=" * 60)
 
-    print("=" * 60)
-    print("kie.ai Nano Banana Pro — Stage 1 Test")
-    print("=" * 60)
-    print(f"Bag URL:       {BAG_IMAGE_URL[:60]}...")
-    print(f"Reference URL: {REFERENCE_URL[:60]}...")
-    print(f"Model:         {os.environ.get('KIE_AI_MODEL', 'nano-banana-pro')}")
+    # ------------------------------------------------------------------
+    # Step 1: Get reference pin from Pinterest
+    # ------------------------------------------------------------------
+    if REFERENCE_URL_OVERRIDE:
+        reference_url = REFERENCE_URL_OVERRIDE
+        pin_id = "manual"
+        print(f"Step 1: Using manual reference URL")
+        print(f"        {reference_url[:70]}")
+    else:
+        print("Step 1: Getting random pin from Pinterest board…")
+        from ai_bag_agent.ai_content.services.pinterest_client import get_random_pin
+        pin_result = get_random_pin(board_url=BOARD_URL, tenant_id=TENANT_ID)
+        if not pin_result["success"]:
+            print(f"❌ Pinterest failed: {pin_result['error']}")
+            print()
+            print("Fix: regenerate PINTEREST_ACCESS_TOKEN at developers.pinterest.com")
+            print("     or set REFERENCE_URL_OVERRIDE in this script")
+            sys.exit(1)
+        reference_url = pin_result["image_url"]
+        pin_id = pin_result["pin_id"]
+        print(f"✅ Pin: {pin_id}")
+        print(f"   URL: {reference_url[:70]}")
+
+    # ------------------------------------------------------------------
+    # Step 2: Generate with kie.ai
+    # ------------------------------------------------------------------
     print()
-
-    if "replace me" in BAG_IMAGE_URL or "replace me" in REFERENCE_URL:
-        print("⚠️  Please update BAG_IMAGE_URL and REFERENCE_URL at the top of this script!")
-        print("   Paste a real public URL for your bag photo and a Pinterest reference image.")
-        sys.exit(1)
+    print(f"Step 2: Generating with kie.ai (20-60s)…")
+    print(f"        Bag:       {BAG_IMAGE_URL[:70]}")
+    print(f"        Reference: {reference_url[:70]}")
 
     from ai_bag_agent.ai_content.services.ai_generator import generate_image
-
-    print("Generating image… (this takes 20-40 seconds)")
     t0 = time.monotonic()
-    result = generate_image(
+    gen = generate_image(
         bag_image_path=BAG_IMAGE_URL,
-        reference_image_url=REFERENCE_URL,
+        reference_image_url=reference_url,
         custom_prompt=CUSTOM_PROMPT,
         tenant_id=TENANT_ID,
     )
     elapsed = time.monotonic() - t0
 
+    if not gen["success"]:
+        print(f"❌ Generation failed: {gen['error']}")
+        sys.exit(1)
+
+    print(f"✅ Generated in {elapsed:.1f}s")
+    print(f"   URL: {gen['generated_url']}")
+
+    # ------------------------------------------------------------------
+    # Step 3: Upload to Cloudinary
+    # ------------------------------------------------------------------
+    print()
+    print("Step 3: Uploading to Cloudinary…")
+
+    if not gen.get("local_path"):
+        print("⚠️  No local backup to upload (download may have failed)")
+        print(f"   Generated URL still accessible: {gen['generated_url']}")
+    else:
+        from ai_bag_agent.ai_content.services.cloudinary_svc import upload_generated_image
+        upload = upload_generated_image(gen, tenant_id=TENANT_ID)
+
+        if not upload["success"]:
+            print(f"❌ Cloudinary upload failed: {upload['error']}")
+        else:
+            print(f"✅ Uploaded: {upload['public_url']}")
+            print(f"   Size: {upload['size_bytes'] // 1024} KB  "
+                  f"Dimensions: {upload['width']}x{upload['height']}")
+
+    # ------------------------------------------------------------------
+    # Summary
+    # ------------------------------------------------------------------
     print()
     print("=" * 60)
-    if result["success"]:
-        print("✅ SUCCESS!")
-        print(f"   Generated URL: {result['generated_url']}")
-        print(f"   Local backup:  {result['local_path']}")
-        print(f"   Model:         {result['model_used']}")
-        print(f"   Time:          {result['generation_time_sec']:.1f}s")
-        print()
-        print("Open the generated image:")
-        if result["local_path"]:
-            local = result["local_path"]
-            print(f"   open '{local}'  (macOS)")
-    else:
-        print("❌ FAILED")
-        print(f"   Error: {result['error']}")
-        print()
-        print("Troubleshooting:")
-        print("  • Check KIE_AI_API_KEY in .env is correct")
-        print("  • Make sure BAG_IMAGE_URL is publicly accessible")
-        print("  • Check kie.ai service status at https://kie.ai")
+    print("SUMMARY")
+    print("=" * 60)
+    print(f"Bag:          {BAG_IMAGE_URL}")
+    print(f"Reference:    {reference_url}")
+    print(f"Generated:    {gen['generated_url']}")
+    if gen.get("local_path"):
+        print(f"Local backup: {gen['local_path']}")
+    print()
+    print("Open generated image:")
+    print(f"  {gen['generated_url']}")
     print("=" * 60)
 
 
