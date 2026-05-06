@@ -6,8 +6,8 @@
 - [x] Stage 0: Project skeleton + DB + auth ✅ (2026-05-01)
 - [x] Stage 1: kie.ai Generator ✅ (2026-05-01)
 - [x] Stage 2: Cloudinary Uploader ✅ (2026-05-06)
-- [ ] Stage 3: Pinterest Client (API v5)
-- [ ] Stage 4: Admin UI — Bag Queue management
+- [x] Stage 3: Pinterest Client (API v5) ✅ (2026-05-06)
+- [x] Stage 4: Admin UI — Bag Queue management ✅ (2026-05-06)
 - [ ] Stage 5: Discord Bot (approval workflow)
 - [ ] Stage 6: Social Poster (FB + IG)
 - [ ] Stage 7: Orchestrator — Generate Job
