@@ -299,7 +299,7 @@ def _poll_for_result(
 
 def _download_generated(url: str, tenant_id: str) -> Optional[str]:
     """Download generated image to storage/generated/ as local backup."""
-    storage_dir = Path(__file__).parents[4] / "storage" / "generated" / tenant_id
+    storage_dir = Path(__file__).parents[3] / "storage" / "generated" / tenant_id
     storage_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = int(time.time())
