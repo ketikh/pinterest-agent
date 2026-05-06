@@ -4,8 +4,8 @@
 
 - [x] Phase 1: Infrastructure + setup ✅ (2026-05-01)
 - [x] Stage 0: Project skeleton + DB + auth ✅ (2026-05-01)
-- [ ] Stage 1: kie.ai Generator
-- [ ] Stage 2: Cloudinary Uploader
+- [x] Stage 1: kie.ai Generator ✅ (2026-05-01)
+- [x] Stage 2: Cloudinary Uploader ✅ (2026-05-06)
 - [ ] Stage 3: Pinterest Client (API v5)
 - [ ] Stage 4: Admin UI — Bag Queue management
 - [ ] Stage 5: Discord Bot (approval workflow)
