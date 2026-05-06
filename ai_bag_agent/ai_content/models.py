@@ -52,6 +52,7 @@ class BagQueue(db.Model):
     bag_name: str = db.Column(db.String(256), nullable=False)
     image_path: str = db.Column(db.String(512), nullable=False)  # Cloudinary URL after upload
     custom_prompt: Optional[str] = db.Column(db.Text, nullable=True)
+    reference_url: Optional[str] = db.Column(db.String(1024), nullable=True)  # manual Pinterest URL
     status: str = db.Column(
         db.String(32), nullable=False, default="pending", index=True
     )
