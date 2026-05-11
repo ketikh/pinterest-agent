@@ -29,7 +29,7 @@ from typing import Any, Awaitable, Callable, Optional
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
-from telegram.error import NetworkError, RetryAfter, TelegramError, TimedOut
+from telegram.error import BadRequest, NetworkError, RetryAfter, TelegramError, TimedOut
 from telegram.ext import Application, CallbackQueryHandler, ContextTypes
 
 logger = logging.getLogger(__name__)
@@ -165,9 +165,15 @@ async def _send_approval_request(approval_id: int, tenant_id: str) -> Optional[s
     caption = _build_caption(snapshot)
     keyboard = _build_keyboard(approval_id, snapshot["regeneration_count"])
 
+    # Download the image first so we can upload as multipart (10 MB limit)
+    # rather than relying on Telegram's URL fetcher (~5 MB limit, picky about
+    # Content-Type and Cloudinary headers). Falls back to URL if download fails.
+    photo_arg = await _fetch_image_bytes(snapshot["generated_image_url"]) \
+        or snapshot["generated_image_url"]
+
     message = await _with_retry(lambda: _application.bot.send_photo(
         chat_id=_TELEGRAM_CHAT_ID,
-        photo=snapshot["generated_image_url"],
+        photo=photo_arg,
         caption=caption,
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=keyboard,
@@ -486,6 +492,42 @@ def _escape_md(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Image fetcher — work around Telegram's URL-fetch quirks
+# ---------------------------------------------------------------------------
+
+# Max bytes we will buffer in memory before falling back to URL.
+# Telegram's sendPhoto bytes upload limit is 10 MB; we cap slightly lower.
+_MAX_PHOTO_BYTES = 9 * 1024 * 1024
+
+
+async def _fetch_image_bytes(url: str) -> Optional[bytes]:
+    """Download an image to bytes (best-effort).
+
+    Returning bytes lets us upload via multipart, which avoids Telegram's
+    server-side URL fetcher that often chokes on >5 MB Cloudinary images
+    with "Wrong type of the web page content". On failure (oversize,
+    network error, non-image content) we return None and the caller falls
+    back to passing the raw URL string.
+    """
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            resp = await client.get(url)
+            if resp.status_code != 200:
+                logger.warning("Image download HTTP %d for %s", resp.status_code, url[:80])
+                return None
+            data = resp.content
+            if len(data) > _MAX_PHOTO_BYTES:
+                logger.warning("Image too large for bytes upload (%d B) — falling back to URL",
+                               len(data))
+                return None
+            return data
+    except Exception as exc:
+        logger.warning("Image download failed for %s: %s", url[:80], exc)
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Telegram API retry wrapper
 # ---------------------------------------------------------------------------
 
@@ -506,6 +548,11 @@ async def _with_retry(
             logger.warning("Telegram rate-limited — waiting %.1fs", wait)
             await asyncio.sleep(wait)
             last_exc = exc
+        except BadRequest as exc:
+            # 4xx — Telegram rejected the request shape (bad URL, photo too
+            # large, bad chat id…). Retrying won't help.
+            logger.error("Telegram BadRequest (non-retryable): %s", exc)
+            return None
         except (NetworkError, TimedOut) as exc:
             wait = 2 ** attempt
             logger.warning(
