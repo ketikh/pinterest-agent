@@ -11,7 +11,7 @@ from flask_login import login_required
 from werkzeug.utils import secure_filename
 
 from . import ai_content_bp
-from .models import BagQueue, PendingApproval, PostLog
+from .models import BagQueue, PendingApproval, PostLog, Setting
 from ..extensions import db
 
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
@@ -179,3 +179,47 @@ def posts():
         .all()
     )
     return render_template("ai_content/posts.html", posts=posts)
+
+
+# ---------------------------------------------------------------------------
+# Settings
+# ---------------------------------------------------------------------------
+
+_SETTING_KEYS = (
+    "global_prompt_template",
+    "fb_caption_template",
+    "ig_caption_template",
+)
+
+_CREDENTIAL_KEYS = (
+    ("KIE_AI_API_KEY", "kie.ai"),
+    ("CLOUDINARY_API_KEY", "Cloudinary"),
+    ("PINTEREST_ACCESS_TOKEN", "Pinterest"),
+    ("TELEGRAM_BOT_TOKEN", "Telegram bot"),
+    ("TELEGRAM_CHAT_ID", "Telegram chat"),
+    ("FB_PAGE_TOKEN", "Facebook token"),
+    ("FB_PAGE_ID", "Facebook page"),
+    ("IG_BUSINESS_ACCOUNT_ID", "Instagram"),
+)
+
+
+@ai_content_bp.route("/settings", methods=["GET", "POST"])
+@login_required
+def settings_view():
+    if request.method == "POST":
+        for key in _SETTING_KEYS:
+            value = request.form.get(key, "").strip()
+            Setting.set(key, value)
+        flash("✅ Settings saved.", "success")
+        return redirect(url_for("ai_content.settings_view"))
+
+    values = {key: Setting.get(key, default="") for key in _SETTING_KEYS}
+    credentials = [
+        (label, bool(os.environ.get(env_key)))
+        for env_key, label in _CREDENTIAL_KEYS
+    ]
+    return render_template(
+        "ai_content/settings.html",
+        values=values,
+        credentials=credentials,
+    )

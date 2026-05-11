@@ -1,0 +1,99 @@
+{% extends "ai_content/base.html" %}
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Settings</h2>
+
+<div class="row g-4">
+  <!-- Templates -->
+  <div class="col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-header bg-white">
+        <strong>Templates</strong>
+        <small class="text-muted ms-2">
+          ცვლადები: <code>{bag_name}</code>, <code>{bag_id}</code>,
+          <code>{category}</code>, <code>{price}</code>
+        </small>
+      </div>
+      <div class="card-body">
+        <form method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Global prompt template</label>
+            <small class="d-block text-muted mb-2">
+              kie.ai generation-ისთვის — fallback თუ bag-ს custom_prompt არ აქვს
+            </small>
+            <textarea name="global_prompt_template" rows="4"
+                      class="form-control font-monospace small"
+                      placeholder="Leave empty to use the hardcoded default in code">{{ values.global_prompt_template }}</textarea>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">
+              <i class="bi bi-facebook text-primary"></i> Facebook caption template
+            </label>
+            <textarea name="fb_caption_template" rows="6"
+                      class="form-control font-monospace small"
+                      placeholder="Leave empty to use the hardcoded default">{{ values.fb_caption_template }}</textarea>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">
+              <i class="bi bi-instagram text-danger"></i> Instagram caption template
+            </label>
+            <textarea name="ig_caption_template" rows="8"
+                      class="form-control font-monospace small"
+                      placeholder="Leave empty to use the hardcoded default">{{ values.ig_caption_template }}</textarea>
+          </div>
+
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-save"></i> Save
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Credentials status -->
+  <div class="col-lg-4">
+    <div class="card shadow-sm">
+      <div class="card-header bg-white">
+        <strong>API credentials</strong>
+        <small class="text-muted d-block">
+          მნიშვნელობები არ ჩანს — მხოლოდ მითითებულია თუ არა
+        </small>
+      </div>
+      <ul class="list-group list-group-flush">
+        {% for label, present in credentials %}
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+          {{ label }}
+          {% if present %}
+            <span class="badge bg-success">✅ Set</span>
+          {% else %}
+            <span class="badge bg-danger">❌ Missing</span>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      <div class="card-body small text-muted">
+        ცვლილებები ხდება <code>.env</code> ფაილში (აპლიკაციის გადატვირთვის შემდეგ).
+      </div>
+    </div>
+
+    <div class="card shadow-sm mt-3">
+      <div class="card-header bg-white"><strong>Schedule</strong></div>
+      <div class="card-body small">
+        Schedule editing საჭიროა Stage 10-მდე
+        (<a href="https://github.com/" class="text-muted">scheduler ჯერ არ მუშაობს</a>).
+        ახლა საათები მითითებულია <code>.env</code>-ში:
+        <ul class="mb-0 mt-2">
+          <li>Morning generate: <code>{{ config.MORNING_JOB_HOUR }}:{{ '%02d'|format(config.MORNING_JOB_MINUTE) }}</code></li>
+          <li>Evening post: <code>{{ config.EVENING_JOB_HOUR }}:{{ '%02d'|format(config.EVENING_JOB_MINUTE) }}</code></li>
+          <li>Timezone: <code>{{ config.SCHEDULER_TIMEZONE }}</code></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
