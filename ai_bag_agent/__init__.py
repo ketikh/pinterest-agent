@@ -45,6 +45,11 @@ def create_app(config_override: Optional[Dict] = None) -> Flask:
     # Configure logging
     _configure_logging(app)
 
+    # Telegram bot — runs in a background thread (skip during tests)
+    if not app.config.get("TESTING") and os.environ.get("TELEGRAM_BOT_TOKEN"):
+        from .ai_content.services.telegram_bot import init_telegram_bot
+        init_telegram_bot(app)
+
     return app
 
 
