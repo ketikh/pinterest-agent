@@ -46,5 +46,5 @@ flake8 src/ tests/ --max-line-length=88
 
 ## Import Order (isort enforces this)
 1. Standard library
-2. Third-party (flask, sqlalchemy, discord, etc.)
+2. Third-party (flask, sqlalchemy, telegram, etc.)
 3. Local (ai_bag_agent.*)

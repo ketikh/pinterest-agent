@@ -3,7 +3,7 @@
 ## Language
 - Default: Georgian (ქართული)
 - Switch to English only if user writes in English
-- Technical terms stay in English (Flask, API, Discord, etc.)
+- Technical terms stay in English (Flask, API, Telegram, etc.)
 
 ## Explaining Changes
 - Always say WHAT changed and WHY in plain language

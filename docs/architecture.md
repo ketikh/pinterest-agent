@@ -11,10 +11,10 @@
 │  │                  │   │                                  │  │
 │  │  /auth/*         │   │  APScheduler                     │  │
 │  │  /admin/*        │   │  ├── morning_job (09:00 TBS)     │  │
-│  │  /api/discord    │   │  └── evening_job (20:00 TBS)     │  │
-│  │                  │   │                                  │  │
-│  │  SQLAlchemy ORM  │   │  discord.py Bot                  │  │
-│  └────────┬─────────┘   │  └── button interaction handler  │  │
+│  │  (no public      │   │  └── evening_job (20:00 TBS)     │  │
+│  │   bot endpoint   │   │                                  │  │
+│  │   — polling)     │   │  python-telegram-bot             │  │
+│  │  SQLAlchemy ORM  │   │  └── callback_query handler      │  │
 │           │             └──────────────┬────────────────────┘  │
 │           └──────────┬─────────────────┘                      │
 │                      ▼                                         │
@@ -29,7 +29,7 @@
           
           ┌────────────────┬─────────────────┐
           ▼                ▼                 ▼
-       Discord         Facebook          Instagram
+      Telegram         Facebook          Instagram
       (approval)        Page             Business
                     (Meta Graph API v21.0)
 ```
@@ -43,7 +43,7 @@
   ├── Get random reference pin (Pinterest API, avoid recent repeats)
   ├── Generate image (kie.ai: bag + reference + prompt)
   ├── Upload to Cloudinary → public HTTPS URL
-  └── Send to Discord → ✅ / ❌ / 🔄 buttons
+  └── Send to Telegram → ✅ / ❌ / 🔄 inline buttons
   
 User reviews during the day:
   ✅ Approve  → pending_approvals.status = "approved"
@@ -83,7 +83,7 @@ ai_bag_agent/
     │   ├── ai_generator.py
     │   ├── cloudinary_svc.py
     │   ├── pinterest_client.py
-    │   ├── discord_svc.py
+    │   ├── telegram_bot.py
     │   └── meta_poster.py
     ├── jobs/            # APScheduler job functions
     │   ├── morning_job.py
@@ -103,7 +103,7 @@ ai_bag_agent/
 |-------|---------|
 | users | Admin authentication |
 | bag_queue | Uploaded bag photos (FIFO work queue) |
-| pending_approvals | Generated images awaiting Discord review |
+| pending_approvals | Generated images awaiting Telegram review |
 | post_log | History of social media posts |
 | recent_pin_cache | Recently used Pinterest pins (variety control) |
 | settings | Configurable values (prompt template, API creds) |

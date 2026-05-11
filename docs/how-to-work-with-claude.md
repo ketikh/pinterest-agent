@@ -42,7 +42,7 @@ Stage 3-ზე გადავიდეთ — kie.ai key მაქვს: [key]
 
 მაგალითები:
 - "login-ი არ მუშაობს — ვიწერ სწორ პაროლს მაგრამ უარს მეუბნება"
-- "discord-ის ღილაკებზე დაჭერა არ მუშაობს — კონსოლში შეცდომაა"
+- "Telegram-ის ღილაკებზე დაჭერა არ მუშაობს — კონსოლში შეცდომაა"
 - "Pinterest token expired — განახლება ვცადე მაგრამ კვლავ არ გამოდის"
 
 ---
@@ -88,7 +88,7 @@ Stage 3-ზე გადავიდეთ — kie.ai key მაქვს: [key]
 
 მაგალითები:
 - "kie.ai key მაქვს: sk-abc123"
-- "Discord bot token: MTI..."
+- "Telegram bot token: 1234567890:AAEhBP0..."
 - "Cloudinary: cloud_name=mycloud, api_key=123, api_secret=xyz"
 
 Claude .env-ში ჩაწერს — შენ ხელით არ გჭირდება.

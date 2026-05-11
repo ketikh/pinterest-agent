@@ -75,7 +75,7 @@ def upgrade():
     sa.Column('generated_image_url', sa.Text(), nullable=True),
     sa.Column('prompt_used', sa.Text(), nullable=True),
     sa.Column('caption', sa.Text(), nullable=True),
-    sa.Column('discord_message_id', sa.String(length=64), nullable=True),
+    sa.Column('telegram_message_id', sa.String(length=64), nullable=True),
     sa.Column('status', sa.String(length=32), nullable=False),
     sa.Column('regeneration_count', sa.Integer(), nullable=False),
     sa.Column('scheduled_post_date', sa.DateTime(timezone=True), nullable=True),
@@ -86,7 +86,7 @@ def upgrade():
     )
     with op.batch_alter_table('pending_approvals', schema=None) as batch_op:
         batch_op.create_index(batch_op.f('ix_pending_approvals_created_at'), ['created_at'], unique=False)
-        batch_op.create_index(batch_op.f('ix_pending_approvals_discord_message_id'), ['discord_message_id'], unique=False)
+        batch_op.create_index(batch_op.f('ix_pending_approvals_telegram_message_id'), ['telegram_message_id'], unique=False)
         batch_op.create_index(batch_op.f('ix_pending_approvals_status'), ['status'], unique=False)
         batch_op.create_index(batch_op.f('ix_pending_approvals_tenant_id'), ['tenant_id'], unique=False)
 
@@ -119,7 +119,7 @@ def downgrade():
     with op.batch_alter_table('pending_approvals', schema=None) as batch_op:
         batch_op.drop_index(batch_op.f('ix_pending_approvals_tenant_id'))
         batch_op.drop_index(batch_op.f('ix_pending_approvals_status'))
-        batch_op.drop_index(batch_op.f('ix_pending_approvals_discord_message_id'))
+        batch_op.drop_index(batch_op.f('ix_pending_approvals_telegram_message_id'))
         batch_op.drop_index(batch_op.f('ix_pending_approvals_created_at'))
 
     op.drop_table('pending_approvals')

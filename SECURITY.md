@@ -30,7 +30,7 @@ If you discover a security vulnerability, please report it by emailing the proje
 This project follows these security practices:
 
 - All secrets stored in environment variables (never in code)
-- Discord interactions verified using signature validation
+- Telegram bot token kept server-side only; polling in dev, webhook with secret token in production
 - All user inputs validated with Flask-WTF
 - SQL injection prevented via SQLAlchemy ORM
 - Passwords hashed with bcrypt

@@ -8,7 +8,7 @@ Every day at **09:00 (Tbilisi)**:
 1. Takes the next bag photo from the queue
 2. Gets a reference photo from Pinterest
 3. Generates a promotional image with kie.ai
-4. Sends to Discord for your approval (✅ / ❌ / 🔄)
+4. Sends to Telegram for your approval (✅ / ❌ / 🔄)
 
 Every day at **20:00 (Tbilisi)**:
 - Posts all approved photos to Facebook Page + Instagram Business
@@ -18,7 +18,7 @@ Every day at **20:00 (Tbilisi)**:
 - Python 3.11 + Flask (Blueprint-based)
 - SQLite (dev) / PostgreSQL (prod via Railway)
 - APScheduler (09:00 + 20:00 cron jobs)
-- discord.py (approval workflow)
+- python-telegram-bot (approval workflow)
 - Pinterest API v5, kie.ai, Cloudinary, Meta Graph API
 
 ## Quick Start

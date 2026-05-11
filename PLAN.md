@@ -8,7 +8,7 @@
 - [x] Stage 2: Cloudinary Uploader ✅ (2026-05-06)
 - [x] Stage 3: Pinterest Client (API v5) ✅ (2026-05-06)
 - [x] Stage 4: Admin UI — Bag Queue management ✅ (2026-05-06)
-- [ ] Stage 5: Discord Bot (approval workflow)
+- [ ] Stage 5: Telegram Bot (approval workflow)
 - [ ] Stage 6: Social Poster (FB + IG)
 - [ ] Stage 7: Orchestrator — Generate Job
 - [ ] Stage 8: Orchestrator — Post Job
@@ -127,24 +127,27 @@ flask --app wsgi run
 
 ---
 
-## Stage 5: Discord Bot
+## Stage 5: Telegram Bot
 
-**Goal:** Send generated image to Discord, handle ✅/❌/🔄 button clicks
+**Goal:** Send generated image to Telegram, handle ✅/❌/🔄 inline-keyboard button clicks
 
-**File:** `ai_bag_agent/ai_content/services/discord_svc.py`
+**File:** `ai_bag_agent/ai_content/services/telegram_bot.py`
+
+**Library:** `python-telegram-bot` v21+ (async API)
 
 **How it works:**
-- Runs as background thread (see docs/decisions/002-discord-threading.md)
-- Sends embed message with: generated image, bag name, regeneration count
-- 3 buttons: Approve (green), Reject (red), Regenerate (grey)
-- On button click: updates `pending_approvals.status` in DB
+- Runs as background asyncio task in a dedicated thread (started at Flask app startup)
+- Strategy: **polling** (long polling, no public URL needed)
+- Sends `send_photo` message with: generated image, bag info caption, `InlineKeyboardMarkup` (3 buttons)
+- Buttons: ✅ Approve / ❌ Reject / 🔄 Regenerate (count/3)
+- On button click (`CallbackQueryHandler`): updates `pending_approvals.status` in DB, edits message
 
-**DONE test:** run bot → call `send_approval_request()` manually → Discord message appears → click ✅ → DB status = "approved"
+**DONE test:** run bot → call `send_approval_request()` manually → Telegram message appears in chat → click ✅ → DB status = "approved", message keyboard removed
 
-**Accounts needed:** Discord Developer Portal
-1. Create Application → Bot → copy token → DISCORD_BOT_TOKEN
-2. Create server → copy channel ID → DISCORD_CHANNEL_ID
-3. Enable Message Content Intent
+**Accounts needed:** Telegram (via @BotFather)
+1. Chat with @BotFather → `/newbot` → copy token → `TELEGRAM_BOT_TOKEN`
+2. Start chat with your bot → run helper to get your chat ID → `TELEGRAM_CHAT_ID`
+3. (Optional) `/setcommands` for `/start`, `/help`
 
 ---
 
@@ -171,7 +174,7 @@ flask --app wsgi run
 
 ## Stage 7: Orchestrator — Morning Generate Job
 
-**Goal:** Full pipeline: queue → Pinterest → kie.ai → Cloudinary → Discord
+**Goal:** Full pipeline: queue → Pinterest → kie.ai → Cloudinary → Telegram
 
 **File:** `ai_bag_agent/ai_content/jobs/morning_job.py`
 
@@ -180,10 +183,10 @@ flask --app wsgi run
 2. Get random reference pin (Stage 3, avoids recent)
 3. Generate image (Stage 1)
 4. Upload generated to Cloudinary (Stage 2)
-5. Send to Discord (Stage 5)
+5. Send to Telegram (Stage 5)
 6. Create PendingApproval record
 
-**DONE test:** call `run_morning_generate()` directly → Discord message appears, DB record created
+**DONE test:** call `run_morning_generate()` directly → Telegram message appears, DB record created
 
 ---
 
@@ -208,12 +211,12 @@ flask --app wsgi run
 
 **Goal:** Handle 🔄 button with max 3 attempts
 
-**Location:** Discord button handler in `discord_svc.py`
+**Location:** Telegram callback handler in `telegram_bot.py`
 
 **Logic:**
 - Check `pending_approval.regeneration_count < MAX_REGENERATIONS (3)`
-- If yes: `regeneration_count += 1`, re-run stages 3→1→2→5, edit Discord message
-- If no: set status = "rejected", update bag status, edit Discord message to "Max dostignut"
+- If yes: `regeneration_count += 1`, re-run stages 3→1→2→5, edit old Telegram message + send new one
+- If no: answer callback with `show_alert=True` "Max regenerations reached", disable the button
 
 **DONE test:** click 🔄 3 times → 4th shows "Max regenerations reached"
 
@@ -272,7 +275,7 @@ scheduler.add_job(evening_job, CronTrigger(hour=20, minute=0))
 - Replace `logging.basicConfig` with `python-json-logger` (structured JSON)
 - Add `@retry(stop=stop_after_attempt(3), wait=wait_exponential())` to all API calls
 - `GET /health` already done — add DB ping check
-- Error notifications: log ERROR to Discord channel (optional)
+- Error notifications: send to Telegram chat (optional)
 - Rate limit awareness: Pinterest (10 req/s), Meta (200 calls/hr)
 
 **DONE test:** intentionally break one service → error logged → app continues
@@ -302,17 +305,18 @@ scheduler.add_job(evening_job, CronTrigger(hour=20, minute=0))
 ### Pinterest Token Expiry
 Trial tokens expire every 24h. System should:
 1. Log WARNING when token is about to expire (check at startup)
-2. Morning job fails gracefully if token expired (logs error, sends Discord notification)
+2. Morning job fails gracefully if token expired (logs error, sends Telegram notification)
 3. Admin can update token via Settings UI
 
-### Discord Interaction Timeout
-Discord expects button interaction response within 3 seconds.
-Solution: acknowledge immediately (response type 6), process async, edit message after.
+### Telegram Callback Timeout
+Telegram expects `callback_query.answer()` within 15 seconds, otherwise the
+loading spinner stays on the user's button. Strategy: call `answer()` immediately
+(empty or short text), then perform DB/IO work, then `edit_message_*` afterwards.
 
 ### kie.ai Rate Limits
 If API is busy, generation can fail. Strategy:
 - Retry 3x with exponential backoff (10s, 20s, 40s)
-- If all fail: set PendingApproval.status = "failed", send Discord notification
+- If all fail: set PendingApproval.status = "failed", send Telegram notification
 
 ### Awaiting Items
 Items that weren't approved by 20:00 get status="awaiting".

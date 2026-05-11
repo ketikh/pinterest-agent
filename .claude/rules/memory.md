@@ -20,7 +20,7 @@ Required fields: Date, Status, Context, Decision, Reasoning, Consequences
 
 Create ADR when:
 - Choosing integration approach for a service
-- Deciding between threading models (Discord bot)
+- Deciding between threading models (Telegram bot)
 - Changing DB schema
 - Deployment strategy decisions
 

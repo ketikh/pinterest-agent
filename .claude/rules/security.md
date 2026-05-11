@@ -18,10 +18,12 @@
 - Session timeout: 8 hours inactivity
 - Login rate limit: 5 attempts per minute per IP
 
-## Discord Security
-- All Discord interactions MUST be verified using Ed25519 signature
-  (DISCORD_PUBLIC_KEY in .env)
-- Reject any interaction without valid signature with 401
+## Telegram Security
+- TELEGRAM_BOT_TOKEN kept in .env only — never logged, never sent to client
+- Polling mode (dev): no public endpoint exposed
+- Webhook mode (production): set secret_token in setWebhook and verify
+  `X-Telegram-Bot-Api-Secret-Token` header on every incoming request; reject with 401 otherwise
+- Restrict bot to a single TELEGRAM_CHAT_ID — ignore callbacks from any other chat
 
 ## API Keys in DB
 - Settings table stores API credentials encrypted (Fernet)

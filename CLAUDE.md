@@ -19,7 +19,7 @@ Standalone Flask application with own admin panel.
 | Pinterest API v5 | Reference photos (App ID: 1565782) |
 | kie.ai Nano Banana Pro | AI image generation |
 | Cloudinary | Image hosting (public HTTPS URL) |
-| Discord Bot (discord.py) | Human approval workflow |
+| Telegram Bot (python-telegram-bot) | Human approval workflow |
 | Meta Graph API | Facebook Page + Instagram posting |
 
 ## Workflow
@@ -29,7 +29,7 @@ Standalone Flask application with own admin panel.
 2. Pinterest API v5 → random reference photo from board
 3. kie.ai: generate(bag_photo + reference_url + global_prompt_template)
 4. Cloudinary → public HTTPS URL
-5. Discord notification with ✅ Approve / ❌ Reject / 🔄 Regenerate buttons
+5. Telegram notification with ✅ Approve / ❌ Reject / 🔄 Regenerate inline buttons
 
 ### During the Day — Human Review
 - ✅ **Approve** → `approved` status
@@ -61,7 +61,7 @@ pinterest-agent/
 │       │   ├── ai_generator.py     # kie.ai
 │       │   ├── cloudinary_svc.py   # Cloudinary
 │       │   ├── pinterest_client.py # Pinterest API v5
-│       │   ├── discord_svc.py      # Discord bot
+│       │   ├── telegram_bot.py     # Telegram bot (approval workflow)
 │       │   └── meta_poster.py      # FB + IG
 │       ├── jobs/               # APScheduler job functions
 │       │   ├── __init__.py
@@ -91,7 +91,7 @@ pinterest-agent/
 `id, tenant_id (default="default"), bag_name, image_path, custom_prompt, status (pending/processing/done/rejected), created_at, processed_at`
 
 ### pending_approvals
-`id, tenant_id, bag_queue_id, reference_pin_id, reference_url, generated_image_url, prompt_used, discord_message_id, status (pending/approved/rejected/awaiting), regeneration_count (max 3), caption, scheduled_post_date, created_at, responded_at`
+`id, tenant_id, bag_queue_id, reference_pin_id, reference_url, generated_image_url, prompt_used, telegram_message_id, status (pending/approved/rejected/awaiting), regeneration_count (max 3), caption, scheduled_post_date, created_at, responded_at`
 
 ### post_log
 `id, tenant_id, approval_id, fb_post_id, ig_post_id, posted_at, caption, error`
@@ -111,7 +111,7 @@ pinterest-agent/
 | 2 | Cloudinary Uploader |
 | 3 | Pinterest Client (API v5) |
 | 4 | Admin UI — Bag Queue management |
-| 5 | Discord Bot (approval workflow) |
+| 5 | Telegram Bot (approval workflow) |
 | 6 | Social Poster (FB + IG) |
 | 7 | Orchestrator — Generate Job |
 | 8 | Orchestrator — Post Job |
@@ -144,7 +144,7 @@ pinterest-agent/
 - Secrets ONLY in .env — never in code
 - All user inputs validated (Flask-WTF)
 - SQLAlchemy ORM — no raw SQL concatenation
-- Discord interactions verified with signature
+- Telegram callbacks: bot token kept server-side only; no public webhook exposure in dev (polling)
 - Production: HTTPS only, security headers enabled
 - (full rules in .claude/rules/security.md)
 
@@ -181,7 +181,7 @@ Pinterest:
 - Trial Access Token: 24h validity (manually refresh until trial approved)
 - Board: https://www.pinterest.com/tissugeorgia/laptop-bags/
 
-Other accounts (kie.ai, Cloudinary, Discord, Meta) → created per Stage as needed.
+Other accounts (kie.ai, Cloudinary, Telegram, Meta) → created per Stage as needed.
 
 ## Memory & Context
 

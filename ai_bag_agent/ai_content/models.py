@@ -68,7 +68,7 @@ class BagQueue(db.Model):
 
 
 # ---------------------------------------------------------------------------
-# PendingApproval — generated images awaiting Discord review
+# PendingApproval — generated images awaiting Telegram review
 # ---------------------------------------------------------------------------
 
 class PendingApproval(db.Model):
@@ -84,7 +84,7 @@ class PendingApproval(db.Model):
     prompt_used: Optional[str] = db.Column(db.Text, nullable=True)
     caption: Optional[str] = db.Column(db.Text, nullable=True)
 
-    discord_message_id: Optional[str] = db.Column(db.String(64), nullable=True, index=True)
+    telegram_message_id: Optional[str] = db.Column(db.String(64), nullable=True, index=True)
     status: str = db.Column(
         db.String(32), nullable=False, default="pending", index=True
     )

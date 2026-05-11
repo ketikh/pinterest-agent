@@ -23,7 +23,7 @@
 - Pinterest token: [valid until / expired]
 - kie.ai: [set up / not yet]
 - Cloudinary: [set up / not yet]
-- Discord bot: [running / not yet]
+- Telegram bot: [running / not yet]
 - Meta API: [set up / not yet]
 
 ## Open Questions

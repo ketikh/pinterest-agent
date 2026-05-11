@@ -37,10 +37,10 @@ class Config:
     CLOUDINARY_API_KEY: Optional[str] = os.environ.get("CLOUDINARY_API_KEY")
     CLOUDINARY_API_SECRET: Optional[str] = os.environ.get("CLOUDINARY_API_SECRET")
 
-    # Discord
-    DISCORD_BOT_TOKEN: Optional[str] = os.environ.get("DISCORD_BOT_TOKEN")
-    DISCORD_CHANNEL_ID: Optional[str] = os.environ.get("DISCORD_CHANNEL_ID")
-    DISCORD_PUBLIC_KEY: Optional[str] = os.environ.get("DISCORD_PUBLIC_KEY")
+    # Telegram
+    TELEGRAM_BOT_TOKEN: Optional[str] = os.environ.get("TELEGRAM_BOT_TOKEN")
+    TELEGRAM_CHAT_ID: Optional[str] = os.environ.get("TELEGRAM_CHAT_ID")
+    TELEGRAM_WEBHOOK_URL: Optional[str] = os.environ.get("TELEGRAM_WEBHOOK_URL")
 
     # Meta
     META_ACCESS_TOKEN: Optional[str] = os.environ.get("META_ACCESS_TOKEN")
