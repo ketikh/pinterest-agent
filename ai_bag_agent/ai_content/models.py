@@ -82,7 +82,11 @@ class PendingApproval(db.Model):
     reference_url: Optional[str] = db.Column(db.Text, nullable=True)
     generated_image_url: Optional[str] = db.Column(db.Text, nullable=True)
     prompt_used: Optional[str] = db.Column(db.Text, nullable=True)
-    caption: Optional[str] = db.Column(db.Text, nullable=True)
+    caption: Optional[str] = db.Column(db.Text, nullable=True)  # legacy free-form
+
+    # AI-generated, admin-editable per-platform captions (Stage 6 extension)
+    fb_caption: Optional[str] = db.Column(db.Text, nullable=True)
+    ig_caption: Optional[str] = db.Column(db.Text, nullable=True)
 
     telegram_message_id: Optional[str] = db.Column(db.String(64), nullable=True, index=True)
     status: str = db.Column(

@@ -42,6 +42,10 @@ class Config:
     TELEGRAM_CHAT_ID: Optional[str] = os.environ.get("TELEGRAM_CHAT_ID")
     TELEGRAM_WEBHOOK_URL: Optional[str] = os.environ.get("TELEGRAM_WEBHOOK_URL")
 
+    # Anthropic (Claude) — AI caption generation
+    ANTHROPIC_API_KEY: Optional[str] = os.environ.get("ANTHROPIC_API_KEY")
+    ANTHROPIC_MODEL: str = os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001")
+
     # Meta (Facebook + Instagram)
     FB_PAGE_TOKEN: Optional[str] = os.environ.get("FB_PAGE_TOKEN")
     FB_PAGE_ID: Optional[str] = os.environ.get("FB_PAGE_ID")
