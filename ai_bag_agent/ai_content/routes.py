@@ -229,7 +229,20 @@ def settings_view():
         flash("✅ Settings saved.", "success")
         return redirect(url_for("ai_content.settings_view"))
 
-    values = {key: Setting.get(key, default="") for key in _SETTING_KEYS}
+    # Show the hardcoded defaults pre-filled when admin hasn't customised yet —
+    # makes hashtags visible and editable instead of hiding behind "default".
+    from .services.social_poster import DEFAULT_FB_TEMPLATE, DEFAULT_IG_TEMPLATE
+    from .config.prompt_template import GLOBAL_SYSTEM_PROMPT
+
+    defaults = {
+        "global_prompt_template": GLOBAL_SYSTEM_PROMPT,
+        "fb_caption_template": DEFAULT_FB_TEMPLATE,
+        "ig_caption_template": DEFAULT_IG_TEMPLATE,
+    }
+    values = {
+        key: (Setting.get(key, default="") or defaults[key])
+        for key in _SETTING_KEYS
+    }
     credentials = [
         (label, bool(os.environ.get(env_key)))
         for env_key, label in _CREDENTIAL_KEYS
