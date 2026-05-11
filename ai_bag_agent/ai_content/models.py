@@ -116,11 +116,19 @@ class PostLog(db.Model):
         db.Integer, db.ForeignKey("pending_approvals.id"), nullable=False
     )
 
+    # Facebook
+    fb_status: str = db.Column(db.String(16), nullable=False, default="skipped")
     fb_post_id: Optional[str] = db.Column(db.String(256), nullable=True)
+    fb_error: Optional[str] = db.Column(db.Text, nullable=True)
+    # status values: success | failed | skipped
+
+    # Instagram
+    ig_status: str = db.Column(db.String(16), nullable=False, default="skipped")
     ig_post_id: Optional[str] = db.Column(db.String(256), nullable=True)
+    ig_error: Optional[str] = db.Column(db.Text, nullable=True)
+
     caption: Optional[str] = db.Column(db.Text, nullable=True)
     posted_at: datetime = db.Column(db.DateTime(timezone=True), default=_now, index=True)
-    error: Optional[str] = db.Column(db.Text, nullable=True)
 
     approval = db.relationship("PendingApproval", back_populates="post_log")
 

@@ -42,11 +42,12 @@ class Config:
     TELEGRAM_CHAT_ID: Optional[str] = os.environ.get("TELEGRAM_CHAT_ID")
     TELEGRAM_WEBHOOK_URL: Optional[str] = os.environ.get("TELEGRAM_WEBHOOK_URL")
 
-    # Meta
-    META_ACCESS_TOKEN: Optional[str] = os.environ.get("META_ACCESS_TOKEN")
-    META_PAGE_ID: Optional[str] = os.environ.get("META_PAGE_ID")
-    META_INSTAGRAM_ACCOUNT_ID: Optional[str] = os.environ.get("META_INSTAGRAM_ACCOUNT_ID")
+    # Meta (Facebook + Instagram)
+    FB_PAGE_ACCESS_TOKEN: Optional[str] = os.environ.get("FB_PAGE_ACCESS_TOKEN")
+    FB_PAGE_ID: Optional[str] = os.environ.get("FB_PAGE_ID")
+    IG_BUSINESS_ACCOUNT_ID: Optional[str] = os.environ.get("IG_BUSINESS_ACCOUNT_ID")
     META_API_VERSION: str = os.environ.get("META_API_VERSION", "v21.0")
+    META_GRAPH_BASE: str = f"https://graph.facebook.com/{os.environ.get('META_API_VERSION', 'v21.0')}"
 
 
 def _dev_db_uri() -> str:

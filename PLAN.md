@@ -223,20 +223,48 @@ def get_valid_access_token(tenant_id: str = "default") -> str:
 
 **Goal:** Post approved images to Facebook Page + Instagram Business
 
-**File:** `ai_bag_agent/ai_content/services/meta_poster.py`
+**File:** `ai_bag_agent/ai_content/services/social_poster.py`
 
 **Functions:**
-- `post_to_facebook(image_url, caption, page_id) → str` — returns fb_post_id
-- `post_to_instagram(image_url, caption, ig_account_id) → str` — returns ig_post_id
-- Uses Meta Graph API v21.0
+- `post_to_facebook(image_url, caption, tenant_id) → {success, post_id, error}`
+- `post_to_instagram(image_url, caption, tenant_id) → {success, post_id, error}` (3-step: container → poll → publish)
+- `post_to_both(approval_id, tenant_id) → {success, fb_status, ig_status, fb_post_id, ig_post_id, post_log_id, error}` — orchestrator used by Stage 8 evening_job
+- `generate_caption(approval, platform)` — DB Setting override > hardcoded default; separate FB and IG templates
+- `check_token()` — token validity + expiry inspection
+- API base: `META_GRAPH_BASE = f"https://graph.facebook.com/{META_API_VERSION}"`, centralised in `config.py`
 
-**DONE test:** post test image to sandbox FB page + IG
+**Status policy (partial-success):**
+- Both platforms succeed → `approval.status = "posted"`, bag → `done`
+- One succeeds → `approval.status = "posted"`, the failed platform's error stored in PostLog
+- Both fail → `approval.status` stays `"approved"` for next-day retry
 
-**Accounts needed:** Meta Developer account
-1. Create App → add Facebook Login + Instagram Basic Display
-2. Get Page Access Token (long-lived)
-3. Get Instagram Business Account ID
-→ META_ACCESS_TOKEN, META_PAGE_ID, META_INSTAGRAM_ACCOUNT_ID in .env
+**PostLog schema** (rewritten in this stage):
+- `fb_status / ig_status` ∈ {`success`, `failed`, `skipped`}
+- `fb_post_id / ig_post_id` (NULL when not success)
+- `fb_error / ig_error` (NULL when success)
+
+**Error handling:**
+- 401 / OAuth code 190 → Telegram alert ("token expired, regenerate")
+- 4xx → log + return failure (no retry)
+- 5xx + network → 3 retries, exponential backoff
+- IG container poll: every 2 s, max 30 s
+- Rate-limit awareness: log `X-Business-Use-Case-Usage` header when high
+
+**Manual scripts:**
+- `scripts/check_meta_token.py` — validate token + show expiry (run once after setup)
+- `scripts/test_social_poster.py` — `--dry-run` default (caption preview + URL HEAD + token check), `--live` requires typed `YES` confirmation
+
+**DONE test:**
+1. `python scripts/check_meta_token.py` → `✅ valid, expires: never`
+2. `python scripts/test_social_poster.py` → dry-run passes all four checks
+3. `python scripts/test_social_poster.py --live` → real post → URLs verifiable in browser
+4. PostLog row created with correct `fb_status` and `ig_status`
+
+**Accounts needed:** Meta Developer account + already-set-up FB Page and IG Business Account
+1. Get long-lived **Page** Access Token (does not expire) → `FB_PAGE_ACCESS_TOKEN`
+2. Get FB Page ID → `FB_PAGE_ID`
+3. Get IG Business Account ID (via `GET /{page_id}?fields=instagram_business_account`) → `IG_BUSINESS_ACCOUNT_ID`
+4. Required scopes: `pages_manage_posts`, `instagram_basic`, `instagram_content_publish`
 
 ---
 
