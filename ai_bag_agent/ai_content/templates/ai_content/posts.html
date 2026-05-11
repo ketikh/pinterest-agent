@@ -1,0 +1,74 @@
+{% extends "ai_content/base.html" %}
+{% block title %}Posts{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Post Log</h2>
+
+{% if not posts %}
+  <div class="alert alert-light text-center">
+    არცერთი post ჯერ არ გასულა.
+  </div>
+{% else %}
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Date</th>
+          <th>Bag</th>
+          <th class="text-center">FB</th>
+          <th class="text-center">IG</th>
+          <th>Caption</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in posts %}
+        <tr>
+          <td class="small text-muted">
+            {{ p.posted_at.strftime('%Y-%m-%d %H:%M') }}
+          </td>
+          <td>
+            {% if p.approval and p.approval.bag %}
+              {{ p.approval.bag.bag_name }}
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+            <br><small class="text-muted">approval #{{ p.approval_id }}</small>
+          </td>
+          <td class="text-center">
+            {% if p.fb_status == 'success' %}
+              <a href="https://www.facebook.com/{{ p.fb_post_id }}" target="_blank"
+                 rel="noopener" class="badge bg-success text-decoration-none">
+                ✅ View
+              </a>
+            {% elif p.fb_status == 'failed' %}
+              <span class="badge bg-danger" title="{{ p.fb_error }}">❌</span>
+            {% else %}
+              <span class="badge bg-secondary">—</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            {% if p.ig_status == 'success' %}
+              <span class="badge bg-success" title="media id: {{ p.ig_post_id }}">✅ {{ p.ig_post_id[:8] }}…</span>
+            {% elif p.ig_status == 'failed' %}
+              <span class="badge bg-danger" title="{{ p.ig_error }}">❌</span>
+            {% else %}
+              <span class="badge bg-secondary">—</span>
+            {% endif %}
+          </td>
+          <td class="small" style="max-width: 320px;">
+            <div class="text-truncate" title="{{ p.caption }}">
+              {{ p.caption[:80] if p.caption else '' }}{{ '...' if p.caption and p.caption|length > 80 }}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<small class="text-muted d-block mt-3">
+  ბოლო 100 ჩანაწერი ნაჩვენებია.
+</small>
+{% endif %}
+{% endblock %}

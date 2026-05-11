@@ -128,3 +128,54 @@ def queue_reorder():
         BagQueue.query.filter_by(id=bag_id).update({"sort_order": position})
     db.session.commit()
     return {"success": True}
+
+
+# ---------------------------------------------------------------------------
+# Approvals
+# ---------------------------------------------------------------------------
+
+@ai_content_bp.route("/approvals")
+@login_required
+def approvals():
+    status_filter = request.args.get("status", "all")
+    query = PendingApproval.query
+    if status_filter != "all":
+        query = query.filter_by(status=status_filter)
+    approvals = (
+        query.order_by(PendingApproval.created_at.desc())
+        .limit(100)
+        .all()
+    )
+    return render_template(
+        "ai_content/approvals.html",
+        approvals=approvals,
+        status_filter=status_filter,
+    )
+
+
+@ai_content_bp.route("/approvals/<int:approval_id>/retry", methods=["POST"])
+@login_required
+def approval_retry(approval_id: int):
+    from .services.orchestrator import retry_post
+    result = retry_post(approval_id)
+    if result.get("success"):
+        flash("✅ ხელახლა გამოქვეყნდა.", "success")
+    else:
+        flash(f"❌ ვერ მოხერხდა: {result.get('error', 'unknown')}", "danger")
+    return redirect(url_for("ai_content.approvals"))
+
+
+# ---------------------------------------------------------------------------
+# Posts (history)
+# ---------------------------------------------------------------------------
+
+@ai_content_bp.route("/posts")
+@login_required
+def posts():
+    posts = (
+        PostLog.query
+        .order_by(PostLog.posted_at.desc())
+        .limit(100)
+        .all()
+    )
+    return render_template("ai_content/posts.html", posts=posts)
