@@ -261,7 +261,7 @@ def get_valid_access_token(tenant_id: str = "default") -> str:
 4. PostLog row created with correct `fb_status` and `ig_status`
 
 **Accounts needed:** Meta Developer account + already-set-up FB Page and IG Business Account
-1. Get long-lived **Page** Access Token (does not expire) → `FB_PAGE_ACCESS_TOKEN`
+1. Get long-lived **Page** Access Token (does not expire) → `FB_PAGE_TOKEN`
 2. Get FB Page ID → `FB_PAGE_ID`
 3. Get IG Business Account ID (via `GET /{page_id}?fields=instagram_business_account`) → `IG_BUSINESS_ACCOUNT_ID`
 4. Required scopes: `pages_manage_posts`, `instagram_basic`, `instagram_content_publish`

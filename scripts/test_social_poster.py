@@ -72,7 +72,7 @@ def main() -> None:
         # ----------------------------------------------------------
         # Step 1: Token validation
         # ----------------------------------------------------------
-        print("Step 1: Validating FB_PAGE_ACCESS_TOKEN…")
+        print("Step 1: Validating FB_PAGE_TOKEN…")
         tok = check_token()
         if not tok["valid"]:
             print(f"   ❌ Token error: {tok['error']}")

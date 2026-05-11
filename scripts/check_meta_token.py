@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate FB_PAGE_ACCESS_TOKEN — call once after setting up .env.
+"""Validate FB_PAGE_TOKEN — call once after setting up .env.
 
 Usage:
     source venv/bin/activate
@@ -39,7 +39,7 @@ def main() -> None:
         print(f"❌ Token INVALID")
         print(f"   Error: {result['error']}")
         print()
-        print("Fix: regenerate FB_PAGE_ACCESS_TOKEN at developers.facebook.com")
+        print("Fix: regenerate FB_PAGE_TOKEN at developers.facebook.com")
         print("     → Tools → Graph API Explorer → Get Page Access Token")
         sys.exit(1)
 

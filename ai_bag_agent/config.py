@@ -43,7 +43,7 @@ class Config:
     TELEGRAM_WEBHOOK_URL: Optional[str] = os.environ.get("TELEGRAM_WEBHOOK_URL")
 
     # Meta (Facebook + Instagram)
-    FB_PAGE_ACCESS_TOKEN: Optional[str] = os.environ.get("FB_PAGE_ACCESS_TOKEN")
+    FB_PAGE_TOKEN: Optional[str] = os.environ.get("FB_PAGE_TOKEN")
     FB_PAGE_ID: Optional[str] = os.environ.get("FB_PAGE_ID")
     IG_BUSINESS_ACCOUNT_ID: Optional[str] = os.environ.get("IG_BUSINESS_ACCOUNT_ID")
     META_API_VERSION: str = os.environ.get("META_API_VERSION", "v21.0")

@@ -9,7 +9,7 @@ import pytest
 from ai_bag_agent.ai_content.services import social_poster as sp
 
 FAKE_ENV = {
-    "FB_PAGE_ACCESS_TOKEN": "EAA-fake-token",
+    "FB_PAGE_TOKEN": "EAA-fake-token",
     "FB_PAGE_ID": "1234567890",
     "IG_BUSINESS_ACCOUNT_ID": "9876543210",
     "META_API_VERSION": "v21.0",
@@ -74,7 +74,7 @@ class TestPostToFacebook:
         with patch.dict("os.environ", {}, clear=True):
             result = sp.post_to_facebook("https://x.jpg", "caption")
         assert result["success"] is False
-        assert "FB_PAGE_ACCESS_TOKEN" in result["error"]
+        assert "FB_PAGE_TOKEN" in result["error"]
 
     def test_success_returns_post_id(self):
         with patch.dict("os.environ", FAKE_ENV), \

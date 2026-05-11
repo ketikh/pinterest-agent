@@ -125,10 +125,10 @@ def post_to_facebook(image_url: str, caption: str, tenant_id: str = "default") -
 
     Returns: {success, post_id, error}
     """
-    token = os.environ.get("FB_PAGE_ACCESS_TOKEN")
+    token = os.environ.get("FB_PAGE_TOKEN")
     page_id = os.environ.get("FB_PAGE_ID")
     if not token or not page_id:
-        return _platform_err("FB_PAGE_ACCESS_TOKEN or FB_PAGE_ID not set")
+        return _platform_err("FB_PAGE_TOKEN or FB_PAGE_ID not set")
 
     url = f"{META_GRAPH_BASE}/{page_id}/photos"
     data = {
@@ -162,10 +162,10 @@ def post_to_instagram(image_url: str, caption: str, tenant_id: str = "default") 
 
     Returns: {success, post_id, error}
     """
-    token = os.environ.get("FB_PAGE_ACCESS_TOKEN")
+    token = os.environ.get("FB_PAGE_TOKEN")
     ig_id = os.environ.get("IG_BUSINESS_ACCOUNT_ID")
     if not token or not ig_id:
-        return _platform_err("FB_PAGE_ACCESS_TOKEN or IG_BUSINESS_ACCOUNT_ID not set")
+        return _platform_err("FB_PAGE_TOKEN or IG_BUSINESS_ACCOUNT_ID not set")
 
     # --- Step 1: create container ---
     container_url = f"{META_GRAPH_BASE}/{ig_id}/media"
@@ -247,10 +247,10 @@ def generate_caption(approval, platform: str = "fb") -> str:
 # ---------------------------------------------------------------------------
 
 def check_token() -> dict:
-    """Verify FB_PAGE_ACCESS_TOKEN is valid. Returns details on expiry."""
-    token = os.environ.get("FB_PAGE_ACCESS_TOKEN")
+    """Verify FB_PAGE_TOKEN is valid. Returns details on expiry."""
+    token = os.environ.get("FB_PAGE_TOKEN")
     if not token:
-        return {"valid": False, "error": "FB_PAGE_ACCESS_TOKEN not set"}
+        return {"valid": False, "error": "FB_PAGE_TOKEN not set"}
 
     # 1. Basic identity check
     try:
@@ -376,7 +376,7 @@ def _handle_meta_error(response: requests.Response, platform: str) -> dict:
     # 401 / 190 = OAuth / token issues → Telegram alert
     if response.status_code == 401 or code in (190, 102):
         _notify_admin(f"⚠️ Meta {platform} token expired or revoked.\n{msg}\n"
-                      f"Regenerate at developers.facebook.com and update FB_PAGE_ACCESS_TOKEN.")
+                      f"Regenerate at developers.facebook.com and update FB_PAGE_TOKEN.")
 
     return _platform_err(full)
 
