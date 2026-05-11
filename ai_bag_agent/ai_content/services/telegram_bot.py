@@ -299,7 +299,7 @@ async def _run_regeneration_pipeline(old_approval_id: int, old_caption: str) -> 
 def _blocking_regenerate(old_approval_id: int) -> Optional[int]:
     """Synchronous pipeline runner — called from a worker thread."""
     from ..models import PendingApproval
-    from ..extensions import db
+    from ...extensions import db
     from .pinterest_client import get_random_pin
     from .ai_generator import generate_image
     from .cloudinary_svc import upload_generated_image
@@ -383,7 +383,7 @@ async def _restore_keyboard_with_error(
 
 def _load_approval_snapshot(approval_id: int) -> Optional[dict]:
     from ..models import PendingApproval
-    from ..extensions import db
+    from ...extensions import db
 
     with _flask_app.app_context():
         a = db.session.get(PendingApproval, approval_id)
@@ -403,7 +403,7 @@ def _load_approval_snapshot(approval_id: int) -> Optional[dict]:
 
 def _save_message_id(approval_id: int, message_id: str) -> None:
     from ..models import PendingApproval
-    from ..extensions import db
+    from ...extensions import db
 
     with _flask_app.app_context():
         a = db.session.get(PendingApproval, approval_id)
@@ -414,7 +414,7 @@ def _save_message_id(approval_id: int, message_id: str) -> None:
 
 def _update_status(approval_id: int, status: str) -> bool:
     from ..models import PendingApproval
-    from ..extensions import db
+    from ...extensions import db
 
     with _flask_app.app_context():
         a = db.session.get(PendingApproval, approval_id)
