@@ -55,9 +55,21 @@
           <td class="text-muted" style="font-size:.8rem">
             {{ bag.created_at.strftime('%d %b, %H:%M') }}
           </td>
-          <td>
+          <td class="text-nowrap">
+            {% if bag.status in ('pending', 'failed') %}
+            <form method="POST" action="{{ url_for('ai_content.queue_trigger', bag_id=bag.id) }}"
+                  style="display:inline"
+                  onsubmit="return confirm('გავუშვა pipeline «{{ bag.bag_name }}»-სთვის? (30-60 წამი)')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-sm btn-outline-primary"
+                      title="Run generate pipeline now">
+                <i class="bi bi-play-fill"></i>
+              </button>
+            </form>
+            {% endif %}
             {% if bag.status == 'pending' %}
             <form method="POST" action="{{ url_for('ai_content.queue_delete', bag_id=bag.id) }}"
+                  style="display:inline"
                   onsubmit="return confirm('წაიშალოს «{{ bag.bag_name }}»?')">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="btn btn-sm btn-outline-danger">

@@ -39,22 +39,36 @@
 <div class="row g-3">
   <div class="col-md-6">
     <div class="stat-card">
-      <h6 class="fw-bold mb-3"><i class="bi bi-sunrise me-1 text-warning"></i>Daily Workflow</h6>
-      <ol class="mb-0 text-muted small">
-        <li class="mb-1"><strong>09:00</strong> — Queue-დან ფოტო → kie.ai generation → Discord</li>
-        <li class="mb-1">დღის განმავლობაში — Discord-ზე ✅ / ❌ / 🔄</li>
-        <li class="mb-0"><strong>20:00</strong> — Approved → Facebook + Instagram</li>
-      </ol>
+      <h6 class="fw-bold mb-3"><i class="bi bi-lightning-charge me-1 text-warning"></i>Manual Triggers</h6>
+      <p class="text-muted small mb-3">
+        ეს ღილაკები გაუშვებენ იმ pipeline-ებს, რომელიც scheduler 09:00 / 20:00-ზე ავტომატურად გაუშვებს Stage 10-ის შემდეგ.
+      </p>
+      <div class="d-flex gap-2 flex-wrap">
+        <form method="POST" action="{{ url_for('ai_content.jobs_run_generate') }}"
+              onsubmit="return confirm('გავუშვა Generate Job?\n(Pinterest → kie.ai → Cloudinary → Telegram, ~30–60s)')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-warning btn-sm">
+            <i class="bi bi-play-fill"></i> Run Generate Job
+          </button>
+        </form>
+        <form method="POST" action="{{ url_for('ai_content.jobs_run_post') }}"
+              onsubmit="return confirm('გავუშვა Post Job? ყველა approved approval დაიპოსტება FB + IG-ზე.')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-success btn-sm">
+            <i class="bi bi-megaphone"></i> Run Post Job
+          </button>
+        </form>
+      </div>
     </div>
   </div>
   <div class="col-md-6">
     <div class="stat-card">
-      <h6 class="fw-bold mb-3"><i class="bi bi-info-circle me-1 text-info"></i>Build Progress</h6>
-      <div class="text-muted small">
-        <p class="mb-1">✅ Stage 0: Skeleton + Auth</p>
-        <p class="mb-1 text-muted">⏳ Stage 1: kie.ai Generator — <em>next</em></p>
-        <p class="mb-0 text-muted">⏸ Stages 2–14: See PLAN.md</p>
-      </div>
+      <h6 class="fw-bold mb-3"><i class="bi bi-sunrise me-1 text-info"></i>Daily Workflow</h6>
+      <ol class="mb-0 text-muted small">
+        <li class="mb-1"><strong>09:00 Tbilisi</strong> — Queue-დან ფოტო → kie.ai → Telegram approval</li>
+        <li class="mb-1">დღის განმავლობაში — Telegram ✅ / ❌ / 🔄</li>
+        <li class="mb-0"><strong>20:00 Tbilisi</strong> — Approved → Facebook + Instagram</li>
+      </ol>
     </div>
   </div>
 </div>

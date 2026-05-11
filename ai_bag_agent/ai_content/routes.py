@@ -106,6 +106,22 @@ def queue_upload():
     return redirect(url_for("ai_content.queue"))
 
 
+@ai_content_bp.route("/queue/<int:bag_id>/trigger", methods=["POST"])
+@login_required
+def queue_trigger(bag_id: int):
+    from .services.orchestrator import trigger_for_bag
+    result = trigger_for_bag(bag_id)
+    if result["success"]:
+        flash(
+            f"✅ Pipeline დასრულდა. Approval #{result['approval_id']} შეიქმნა "
+            "და Telegram-ში გაიგზავნა.",
+            "success",
+        )
+    else:
+        flash(f"❌ Pipeline ჩავარდა: {result.get('error', 'unknown')}", "danger")
+    return redirect(url_for("ai_content.queue"))
+
+
 @ai_content_bp.route("/queue/<int:bag_id>/delete", methods=["POST"])
 @login_required
 def queue_delete(bag_id: int):
@@ -223,3 +239,36 @@ def settings_view():
         values=values,
         credentials=credentials,
     )
+
+
+# ---------------------------------------------------------------------------
+# Manual job triggers (synchronous — admin sees result after pipeline finishes)
+# ---------------------------------------------------------------------------
+
+@ai_content_bp.route("/jobs/run-generate", methods=["POST"])
+@login_required
+def jobs_run_generate():
+    from .services.orchestrator import run_generate_job
+    result = run_generate_job()
+    if result["success"]:
+        flash(
+            f"✅ Generate job: bag #{result['bag_id']} → approval "
+            f"#{result['approval_id']} (Telegram sent).",
+            "success",
+        )
+    else:
+        flash(f"⚠️ Generate job: {result.get('error')}", "warning")
+    return redirect(url_for("ai_content.dashboard"))
+
+
+@ai_content_bp.route("/jobs/run-post", methods=["POST"])
+@login_required
+def jobs_run_post():
+    from .services.orchestrator import run_post_job
+    result = run_post_job()
+    flash(
+        f"✅ Post job: {result['posted_count']} posted, "
+        f"{result['failed_count']} failed.",
+        "success" if result["success"] else "warning",
+    )
+    return redirect(url_for("ai_content.dashboard"))
