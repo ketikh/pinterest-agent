@@ -181,6 +181,46 @@ def approval_retry(approval_id: int):
     return redirect(url_for("ai_content.approvals"))
 
 
+@ai_content_bp.route("/approvals/<int:approval_id>/edit", methods=["GET", "POST"])
+@login_required
+def approval_edit(approval_id: int):
+    approval = PendingApproval.query.get_or_404(approval_id)
+
+    if request.method == "POST":
+        approval.fb_caption = (request.form.get("fb_caption", "") or "").strip() or None
+        approval.ig_caption = (request.form.get("ig_caption", "") or "").strip() or None
+        db.session.commit()
+        flash("✅ Captions saved.", "success")
+        return redirect(url_for("ai_content.approvals"))
+
+    return render_template("ai_content/approval_edit.html", approval=approval)
+
+
+@ai_content_bp.route("/approvals/<int:approval_id>/regenerate-captions", methods=["POST"])
+@login_required
+def approval_regenerate_captions(approval_id: int):
+    approval = PendingApproval.query.get_or_404(approval_id)
+    bag = approval.bag
+    if bag is None:
+        flash("❌ Bag-ი დაკარგულია.", "danger")
+        return redirect(url_for("ai_content.approval_edit", approval_id=approval_id))
+
+    from .services.caption_generator import generate_captions
+    result = generate_captions(
+        bag_name=bag.bag_name,
+        custom_prompt=bag.custom_prompt or "",
+        reference_url=approval.reference_url or "",
+    )
+    if result["success"]:
+        approval.fb_caption = result["fb_caption"]
+        approval.ig_caption = result["ig_caption"]
+        db.session.commit()
+        flash("✨ Captions regenerated.", "success")
+    else:
+        flash(f"❌ Caption regeneration failed: {result['error']}", "danger")
+    return redirect(url_for("ai_content.approval_edit", approval_id=approval_id))
+
+
 # ---------------------------------------------------------------------------
 # Posts (history)
 # ---------------------------------------------------------------------------

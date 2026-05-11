@@ -1,0 +1,118 @@
+{% extends "ai_content/base.html" %}
+{% block title %}Edit captions — #{{ approval.id }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0">
+    <a href="{{ url_for('ai_content.approvals') }}" class="text-decoration-none text-muted">
+      <i class="bi bi-arrow-left"></i>
+    </a>
+    Edit captions —
+    <small class="text-muted">{{ approval.bag.bag_name if approval.bag else '?' }} (#{{ approval.id }})</small>
+  </h2>
+  <span class="badge badge-{{ approval.status }} fs-6">{{ approval.status }}</span>
+</div>
+
+<div class="row g-4">
+  <!-- Photo preview -->
+  <div class="col-lg-5">
+    <div class="card shadow-sm">
+      {% if approval.generated_image_url %}
+        <img src="{{ approval.generated_image_url }}" class="card-img-top"
+             style="aspect-ratio: 1/1; object-fit: cover;">
+      {% endif %}
+      <div class="card-body small">
+        <div><strong>Bag:</strong> {{ approval.bag.bag_name if approval.bag else '—' }}</div>
+        <div><strong>Approval ID:</strong> #{{ approval.id }}</div>
+        <div><strong>Created:</strong> {{ approval.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+        {% if approval.reference_url %}
+          <div class="mt-1">
+            <a href="{{ approval.reference_url }}" target="_blank" rel="noopener"
+               class="text-decoration-none">
+              <i class="bi bi-link-45deg"></i> Pinterest reference
+            </a>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Caption editor -->
+  <div class="col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <strong>Captions</strong>
+        <form method="POST"
+              action="{{ url_for('ai_content.approval_regenerate_captions', approval_id=approval.id) }}"
+              onsubmit="return confirm('გადააგენერირო ორივე caption AI-ით? (ცვლილებები დაიკარგება)')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-stars"></i> Regenerate with AI
+          </button>
+        </form>
+      </div>
+
+      <div class="card-body">
+        <form method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div class="mb-4">
+            <label class="form-label fw-semibold">
+              <i class="bi bi-facebook text-primary"></i> Facebook caption
+              <small class="text-muted fw-normal">(ქართული, ≤ 3 hashtag)</small>
+            </label>
+            <textarea name="fb_caption" rows="6"
+                      class="form-control small"
+                      placeholder="ცარიელი → social_poster default template გამოიყენებს">{{ approval.fb_caption or '' }}</textarea>
+            <div class="form-text" id="fb-counter">
+              <span class="fb-len">0</span> chars ·
+              <span class="fb-hash">0</span> hashtags
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <label class="form-label fw-semibold">
+              <i class="bi bi-instagram text-danger"></i> Instagram caption
+              <small class="text-muted fw-normal">(English, 8–12 hashtags)</small>
+            </label>
+            <textarea name="ig_caption" rows="10"
+                      class="form-control small"
+                      placeholder="ცარიელი → social_poster default template გამოიყენებს">{{ approval.ig_caption or '' }}</textarea>
+            <div class="form-text" id="ig-counter">
+              <span class="ig-len">0</span> chars ·
+              <span class="ig-hash">0</span> hashtags
+            </div>
+          </div>
+
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-save"></i> Save captions
+            </button>
+            <a href="{{ url_for('ai_content.approvals') }}" class="btn btn-light">
+              Cancel
+            </a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function update(field, prefix) {
+    const ta = document.querySelector(`textarea[name="${field}"]`);
+    if (!ta) return;
+    const refresh = () => {
+      const v = ta.value;
+      document.querySelector(`.${prefix}-len`).textContent = v.length;
+      document.querySelector(`.${prefix}-hash`).textContent = (v.match(/#\w+/g) || []).length;
+    };
+    ta.addEventListener('input', refresh);
+    refresh();
+  }
+  update('fb_caption', 'fb');
+  update('ig_caption', 'ig');
+</script>
+{% endblock %}

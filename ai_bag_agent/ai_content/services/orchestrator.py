@@ -21,7 +21,7 @@ from typing import Optional
 
 from ..models import BagQueue, PendingApproval
 from ...extensions import db
-from . import ai_generator, cloudinary_svc, pinterest_client, social_poster
+from . import ai_generator, caption_generator, cloudinary_svc, pinterest_client, social_poster
 from .telegram_bot import send_approval_request_sync
 
 logger = logging.getLogger(__name__)
@@ -101,7 +101,17 @@ def _run_pipeline_for_bag(bag: BagQueue) -> dict:
         else:
             logger.warning("Cloudinary upload failed for bag %s — using raw kie.ai URL", bag_id)
 
-    # ---- 4. PendingApproval row -----------------------------------------
+    # ---- 4. AI captions (best-effort — empty captions still let admin post) ----
+    captions = caption_generator.generate_captions(
+        bag_name=bag.bag_name,
+        custom_prompt=bag.custom_prompt or "",
+        reference_url=reference_url,
+    )
+    if not captions["success"]:
+        logger.warning("Bag %s: caption generation failed (%s) — admin can write manually",
+                       bag_id, captions["error"])
+
+    # ---- 5. PendingApproval row -----------------------------------------
     approval = PendingApproval(
         tenant_id=tenant_id,
         bag_queue_id=bag_id,
@@ -109,6 +119,8 @@ def _run_pipeline_for_bag(bag: BagQueue) -> dict:
         reference_url=reference_url,
         generated_image_url=final_url,
         prompt_used=gen.get("prompt_used", ""),
+        fb_caption=captions.get("fb_caption"),
+        ig_caption=captions.get("ig_caption"),
         status="pending",
         regeneration_count=0,
     )

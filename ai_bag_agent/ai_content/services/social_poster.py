@@ -75,8 +75,10 @@ def post_to_both(approval_id: int, tenant_id: str = "default") -> dict:
     if not approval.generated_image_url:
         return _err("Approval has no generated_image_url")
 
-    fb_caption = generate_caption(approval, platform="fb")
-    ig_caption = generate_caption(approval, platform="ig")
+    # Prefer admin-curated AI captions stored on the approval; fall back to
+    # the templated default when the AI generation failed or admin cleared.
+    fb_caption = approval.fb_caption or generate_caption(approval, platform="fb")
+    ig_caption = approval.ig_caption or generate_caption(approval, platform="ig")
     image_url = approval.generated_image_url
 
     fb_result = post_to_facebook(image_url, fb_caption, tenant_id)
