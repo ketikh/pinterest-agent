@@ -7,8 +7,9 @@
 - [x] Stage 1: kie.ai Generator ✅ (2026-05-01)
 - [x] Stage 2: Cloudinary Uploader ✅ (2026-05-06)
 - [x] Stage 3: Pinterest Client (API v5) ✅ (2026-05-06)
+- [ ] Stage 3.5: Pinterest OAuth flow ⏸️ BLOCKED — awaiting Pinterest Trial approval
 - [x] Stage 4: Admin UI — Bag Queue management ✅ (2026-05-06)
-- [ ] Stage 5: Telegram Bot (approval workflow)
+- [~] Stage 5: Telegram Bot ✅ partial (send/approve/reject live-tested; regen blocked by Pinterest)
 - [ ] Stage 6: Social Poster (FB + IG)
 - [ ] Stage 7: Orchestrator — Generate Job
 - [ ] Stage 8: Orchestrator — Post Job
@@ -106,6 +107,73 @@ flask --app wsgi run
 **DONE test:** real API call → returns pin URL → stored in recent_pin_cache
 
 **Accounts:** Pinterest App already set up. Refresh token manually when needed (until app approved).
+
+---
+
+## Stage 3.5: Pinterest OAuth Flow (POST-TRIAL-APPROVAL)
+
+**Status:** ⏸️ BLOCKED — waiting for Pinterest Trial approval (1–3 days typical).
+
+**Why:** The current implementation uses a **"Product Limited" 24h test token** that
+must be regenerated manually every day. Once Pinterest approves the Trial, an
+**App Secret** becomes available and we can switch to the proper OAuth flow:
+
+- **30-day access_token** — auto-renewable via refresh_token
+- **1-year refresh_token** — manual browser login needed only once per year
+- Trial Access tier is sufficient (Standard Access not required for our use case)
+
+**File:** `ai_bag_agent/ai_content/services/pinterest_oauth.py` (NEW)
+
+**Functions:**
+```python
+def generate_authorization_url(tenant_id: str) -> str:
+    """OAuth URL → user opens in browser → Pinterest login → 'Allow' → redirect."""
+
+def exchange_code_for_tokens(authorization_code: str) -> dict:
+    """Exchange auth code for access_token + refresh_token. Persists to DB.
+    Returns: {access_token, refresh_token, expires_in}"""
+
+def refresh_access_token(refresh_token: str) -> dict:
+    """Auto-renew access_token using refresh_token. Returns new pair."""
+
+def get_valid_access_token(tenant_id: str = "default") -> str:
+    """Main public API used by pinterest_client.py:
+    1. Read access_token + expiry from DB
+    2. If expires_at > now + 1 day → return current
+    3. Else: refresh_access_token() → store new → return"""
+```
+
+**DB schema updates** (added to `settings` table — keyed values, not new columns):
+- `pinterest_access_token` (TEXT)
+- `pinterest_refresh_token` (TEXT)
+- `pinterest_token_expires_at` (TIMESTAMP, ISO format)
+- `pinterest_oauth_state` (TEXT, temporary during OAuth handshake — CSRF protection)
+
+**CLI helper:** `scripts/pinterest_login.py`
+- Opens browser with authorization URL
+- Spins up a localhost Flask endpoint for the callback
+- Captures `code` from query string, exchanges for tokens, stores in DB
+- Run once per year (refresh_token validity)
+
+**Integration:** `pinterest_client.py._get_token()` must call
+`pinterest_oauth.get_valid_access_token(tenant_id)` instead of reading the static
+`PINTEREST_ACCESS_TOKEN` from environment.
+
+**Env vars needed (after Trial approval):**
+- `PINTEREST_APP_ID=1565782` (already have)
+- `PINTEREST_APP_SECRET=` (granted by Pinterest after Trial approval)
+- `PINTEREST_REDIRECT_URI=http://localhost:5000/auth/pinterest/callback` (dev)
+- Production: `https://yourapp.railway.app/auth/pinterest/callback`
+
+**DONE test:**
+1. Run `python scripts/pinterest_login.py` → browser opens → log in → "Allow"
+2. Script reports "✅ Tokens stored — expires in 30 days, refresh in 1 year"
+3. Restart Flask app → `pinterest_client.get_random_pin()` works without
+   manually setting `PINTEREST_ACCESS_TOKEN` in `.env`
+4. Set `pinterest_token_expires_at` in DB to "yesterday" → call
+   `get_valid_access_token()` → verify it auto-refreshed and updated DB
+
+**Accounts needed:** App Secret from Pinterest Developer Portal (post-approval).
 
 ---
 
