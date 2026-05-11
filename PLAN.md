@@ -10,15 +10,20 @@
 - [ ] Stage 3.5: Pinterest OAuth flow ⏸️ BLOCKED — awaiting Pinterest Trial approval
 - [x] Stage 4: Admin UI — Bag Queue management ✅ (2026-05-06)
 - [~] Stage 5: Telegram Bot ✅ partial (send/approve/reject live-tested; regen blocked by Pinterest)
-- [ ] Stage 6: Social Poster (FB + IG)
-- [ ] Stage 7: Orchestrator — Generate Job
-- [ ] Stage 8: Orchestrator — Post Job
+- [x] Stage 6: Social Poster (FB + IG) ✅ (2026-05-11, live-tested)
+- [x] Stage 7: Orchestrator — Generate Job ✅ (2026-05-11, bundled into Stage 6 work)
+- [x] Stage 8: Orchestrator — Post Job ✅ (2026-05-11, bundled into Stage 6 work)
 - [ ] Stage 9: Regeneration Flow
 - [ ] Stage 10: Scheduler (09:00 + 20:00 cron)
-- [ ] Stage 11: Settings UI
-- [ ] Stage 12: Approvals history + Posts log
+- [x] Stage 11: Settings UI ✅ (2026-05-11, bundled into Stage 6 work)
+- [x] Stage 12: Approvals history + Posts log ✅ (2026-05-11, bundled into Stage 6 work)
 - [ ] Stage 13: Production polish
 - [ ] Stage 14: Railway deployment
+
+> **Note:** In the session of 2026-05-11 the user bundled Stages 7, 8, 11 and 12 into
+> one "Stage 6 push" — orchestrator service + admin UI for approvals, posts and
+> settings + manual job triggers. The section headers below preserve the original
+> stage numbering so cross-references stay valid; only the checkboxes were merged.
 
 ---
 
