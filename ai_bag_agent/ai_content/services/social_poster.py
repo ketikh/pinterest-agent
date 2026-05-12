@@ -37,15 +37,45 @@ MAX_RETRIES = 3
 
 # Hardcoded defaults — overridable via Setting('fb_caption_template' / 'ig_caption_template')
 DEFAULT_FB_TEMPLATE = (
-    "{bag_name} ✨\n\n"
+    "{bag_name} {emoji}\n\n"
     "ხელნაკეთი ჩანთა Tissu Georgia-სგან.\n"
     "🛒 Order: https://tissu-page-production.up.railway.app"
 )
 
 DEFAULT_IG_TEMPLATE = (
-    "{bag_name} ✨\n\n"
+    "{bag_name} {emoji}\n\n"
     "Discover our handcrafted collection at @tissugeorgia 🤎"
 )
+
+# Keyword → emoji map. Used as a default decoration when admin didn't write
+# a caption — picks something tonally appropriate from the bag's name.
+_BAG_EMOJI_RULES = (
+    (("leather", "ტყავ"), "🤎"),
+    (("black", "შავ"), "🖤"),
+    (("white", "თეთრ"), "🤍"),
+    (("red", "წითელ"), "❤️"),
+    (("blue", "ცისფ", "ლურჯ"), "💙"),
+    (("green", "მწვან"), "💚"),
+    (("gold", "ოქრო"), "💛"),
+    (("silver", "ვერცხლ"), "🤍"),
+    (("evening", "night", "საღამო"), "🌙"),
+    (("flower", "rose", "ყვავ"), "🌸"),
+    (("laptop", "ლეპტოპ", "office"), "💼"),
+    (("tote", "შოპერ", "shopper"), "👜"),
+    (("cross", "კროს", "messenger"), "👜"),
+    (("clutch", "კლათჩ"), "✨"),
+)
+
+
+def pick_emoji_for_bag(bag_name: str) -> str:
+    """Pick a thematic emoji based on keywords in the bag name. ✨ is the fallback."""
+    if not bag_name:
+        return "✨"
+    name = bag_name.lower()
+    for keywords, emoji in _BAG_EMOJI_RULES:
+        if any(kw in name for kw in keywords):
+            return emoji
+    return "✨"
 
 
 # ---------------------------------------------------------------------------
@@ -225,11 +255,13 @@ def generate_caption(approval, platform: str = "fb") -> str:
     template = Setting.get(key, default=default) or default
 
     bag = approval.bag
+    bag_name = bag.bag_name if bag else "Bag"
     variables = {
-        "bag_name": bag.bag_name if bag else "Bag",
+        "bag_name": bag_name,
         "bag_id": bag.id if bag else "",
         "category": "",  # reserved for future
         "price": "",     # reserved for future
+        "emoji": pick_emoji_for_bag(bag_name),
     }
 
     try:

@@ -317,8 +317,80 @@ async def _handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await _handle_prompt_regen_request(query, approval_id, context)
     elif action == "editcaption":
         await _handle_edit_caption_request(query, approval_id, context)
+    elif action == "postnow":
+        await _handle_post_now(query, approval_id)
     else:
         await query.answer("Unknown action", show_alert=True)
+
+
+async def _handle_post_now(query, approval_id: int) -> None:
+    """🚀 Post Now — push to FB + IG immediately, in a background task."""
+    await query.answer("🚀 Posting…")
+    await _with_retry(lambda: query.edit_message_caption(
+        caption=_append_status(query.message.caption, "🚀 Posting to FB + IG…"),
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=None,
+    ))
+    asyncio.create_task(_run_post_now(approval_id))
+
+
+async def _run_post_now(approval_id: int) -> None:
+    """Background runner: mark approved + post, then report back to chat."""
+    try:
+        result = await asyncio.to_thread(_blocking_post_now, approval_id)
+    except Exception as exc:
+        logger.exception("Post Now failed for #%s", approval_id)
+        await _with_retry(lambda: _application.bot.send_message(
+            chat_id=_TELEGRAM_CHAT_ID,
+            text=f"❌ Post Now failed for #{approval_id}: {_truncate(str(exc), 200)}",
+        ))
+        return
+
+    lines = []
+    if result.get("success"):
+        lines.append(f"✅ *Posted #{approval_id}*")
+    else:
+        lines.append(f"⚠️ *Post Now finished for #{approval_id}*")
+
+    fb = result.get("fb_status")
+    ig = result.get("ig_status")
+    if fb == "success" and result.get("fb_post_id"):
+        lines.append(f"📘 FB: [{result['fb_post_id']}](https://www.facebook.com/{result['fb_post_id']})")
+    elif fb == "failed":
+        lines.append("📘 FB: ❌ failed")
+    if ig == "success" and result.get("ig_post_id"):
+        lines.append(f"📷 IG media id: `{result['ig_post_id']}`")
+    elif ig == "failed":
+        lines.append("📷 IG: ❌ failed")
+
+    err = result.get("error")
+    if err and not result.get("success"):
+        lines.append(f"\n_Error:_ {_truncate(err, 200)}")
+
+    await _with_retry(lambda: _application.bot.send_message(
+        chat_id=_TELEGRAM_CHAT_ID,
+        text="\n".join(lines),
+        parse_mode=ParseMode.MARKDOWN,
+        disable_web_page_preview=True,
+    ))
+
+
+def _blocking_post_now(approval_id: int) -> dict:
+    """Synchronous: flip status to 'approved' if needed, then post."""
+    from ..models import PendingApproval
+    from ...extensions import db
+    from .social_poster import post_to_both
+
+    with _flask_app.app_context():
+        a = db.session.get(PendingApproval, approval_id)
+        if a is None:
+            return {"success": False, "error": "Approval not found"}
+        if a.status != "approved":
+            a.status = "approved"
+            a.responded_at = datetime.now(timezone.utc)
+            db.session.commit()
+        tenant_id = a.tenant_id
+    return post_to_both(approval_id, tenant_id=tenant_id)
 
 
 async def _handle_edit_caption_request(query, approval_id: int, context) -> None:
@@ -717,6 +789,10 @@ def _build_keyboard(approval_id: int, regen_count: int) -> InlineKeyboardMarkup:
         InlineKeyboardButton(
             "✏️ Edit caption",
             callback_data=f"editcaption_{approval_id}",
+        ),
+        InlineKeyboardButton(
+            "🚀 Post now",
+            callback_data=f"postnow_{approval_id}",
         ),
     ])
     return InlineKeyboardMarkup(buttons)

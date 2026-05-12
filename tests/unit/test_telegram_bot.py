@@ -16,15 +16,16 @@ from ai_bag_agent.ai_content.services import telegram_bot as tb
 # ---------------------------------------------------------------------------
 
 class TestBuildKeyboard:
-    def test_normal_keyboard_has_five_buttons(self):
+    def test_normal_keyboard_has_six_buttons(self):
         kb = tb._build_keyboard(approval_id=42, regen_count=0)
         flat = [btn for row in kb.inline_keyboard for btn in row]
-        assert len(flat) == 5
+        assert len(flat) == 6
         assert any(b.callback_data == "approve_42" for b in flat)
         assert any(b.callback_data == "reject_42" for b in flat)
         assert any(b.callback_data == "regen_42" for b in flat)
         assert any(b.callback_data == "promptregen_42" for b in flat)
         assert any(b.callback_data == "editcaption_42" for b in flat)
+        assert any(b.callback_data == "postnow_42" for b in flat)
 
     def test_max_regen_replaces_regen_button_with_disabled(self):
         kb = tb._build_keyboard(approval_id=42, regen_count=tb.MAX_REGENERATIONS)

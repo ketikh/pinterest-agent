@@ -29,6 +29,26 @@ def _resp(json_body=None, status: int = 200, text: str = "") -> MagicMock:
 # generate_caption
 # ---------------------------------------------------------------------------
 
+class TestPickEmoji:
+    def test_leather_picks_brown_heart(self):
+        assert sp.pick_emoji_for_bag("Leather Tote") == "🤎"
+
+    def test_georgian_leather_picks_brown_heart(self):
+        assert sp.pick_emoji_for_bag("ტყავის ჩანთა") == "🤎"
+
+    def test_laptop_picks_briefcase(self):
+        assert sp.pick_emoji_for_bag("Laptop Bag") == "💼"
+
+    def test_evening_picks_moon(self):
+        assert sp.pick_emoji_for_bag("Evening Clutch") == "🌙"
+
+    def test_unknown_falls_back_to_sparkle(self):
+        assert sp.pick_emoji_for_bag("Generic Item") == "✨"
+
+    def test_empty_name_falls_back_to_sparkle(self):
+        assert sp.pick_emoji_for_bag("") == "✨"
+
+
 class TestGenerateCaption:
     def test_fb_default_includes_bag_name(self):
         approval = MagicMock(bag=MagicMock(bag_name="Laptop Bag XL", id=42))
