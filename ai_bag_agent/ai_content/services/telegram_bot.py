@@ -96,7 +96,18 @@ def _run_bot() -> None:
     asyncio.set_event_loop(loop)
     _bot_loop = loop
 
-    application = Application.builder().token(_TELEGRAM_BOT_TOKEN).build()
+    # Default httpx timeouts in python-telegram-bot are 5s each — way too
+    # tight for multipart upload of a 5-9 MB generated photo. Bump to 60s
+    # for write (upload) and 30s for read/connect.
+    application = (
+        Application.builder()
+        .token(_TELEGRAM_BOT_TOKEN)
+        .connect_timeout(30.0)
+        .read_timeout(30.0)
+        .write_timeout(60.0)
+        .pool_timeout(30.0)
+        .build()
+    )
     application.add_handler(CallbackQueryHandler(_handle_callback))
     # Reply-to-photo-message → admin is overriding the captions
     application.add_handler(MessageHandler(
@@ -170,11 +181,12 @@ async def _send_approval_request(approval_id: int, tenant_id: str) -> Optional[s
     caption = _build_caption(snapshot)
     keyboard = _build_keyboard(approval_id, snapshot["regeneration_count"])
 
-    # Download the image first so we can upload as multipart (10 MB limit)
-    # rather than relying on Telegram's URL fetcher (~5 MB limit, picky about
-    # Content-Type and Cloudinary headers). Falls back to URL if download fails.
-    photo_arg = await _fetch_image_bytes(snapshot["generated_image_url"]) \
-        or snapshot["generated_image_url"]
+    # Telegram chokes on multi-MB photos (5–9 MB images either time out on
+    # multipart upload or get "Wrong type of the web page content" on URL
+    # fetch). We ask Cloudinary for a smaller delivery — original full-size
+    # PNG stays untouched for FB/IG. ~300 KB is plenty for Telegram preview.
+    photo_url = _cloudinary_thumb(snapshot["generated_image_url"])
+    photo_arg = await _fetch_image_bytes(photo_url) or photo_url
 
     message = await _with_retry(lambda: _application.bot.send_photo(
         chat_id=_TELEGRAM_CHAT_ID,
@@ -728,6 +740,27 @@ def _escape_md(text: str) -> str:
     for ch in ("_", "*", "`", "["):
         text = text.replace(ch, "\\" + ch)
     return text
+
+
+# ---------------------------------------------------------------------------
+# Cloudinary thumbnail — keep Telegram delivery small
+# ---------------------------------------------------------------------------
+
+def _cloudinary_thumb(url: str, width: int = 1600) -> str:
+    """Insert a Cloudinary delivery transformation that yields a small file.
+
+    `c_limit,w_N` caps width, `q_auto,f_auto` lets Cloudinary pick the most
+    efficient codec/quality for the requesting client. A 6 MB PNG becomes a
+    ~250 KB WebP/JPEG that Telegram uploads in well under a second. Other
+    URLs are returned unchanged so the helper is safe on third-party hosts.
+    """
+    if "res.cloudinary.com" not in url or "/upload/" not in url:
+        return url
+    return url.replace(
+        "/upload/",
+        f"/upload/c_limit,w_{width},q_auto,f_auto/",
+        1,
+    )
 
 
 # ---------------------------------------------------------------------------
