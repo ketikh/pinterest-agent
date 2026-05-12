@@ -34,7 +34,9 @@ POLL_URL = f"{KIE_API_BASE}/jobs/recordInfo"
 
 RETRIABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 POLL_INTERVAL_SEC = 5
-POLL_TIMEOUT_SEC = 120  # 2 minutes max wait per generation
+# Nano Banana Pro typically finishes in 20-60s but can spike to 3-5 min during
+# peak hours. 5 min is a generous ceiling that still bounds a stuck request.
+POLL_TIMEOUT_SEC = int(os.environ.get("KIE_AI_POLL_TIMEOUT_SEC", "300"))
 
 
 # ---------------------------------------------------------------------------
@@ -250,8 +252,10 @@ def _poll_for_result(
     timeout: int = POLL_TIMEOUT_SEC,
 ) -> tuple[Optional[str], Optional[str]]:
     """Poll until task is complete. Returns (generated_url, error_message)."""
-    deadline = time.monotonic() + timeout
+    start = time.monotonic()
+    deadline = start + timeout
     headers = _build_headers(api_key)
+    last_info_log = start
 
     while time.monotonic() < deadline:
         try:
@@ -291,7 +295,14 @@ def _poll_for_result(
             return None, f"kie.ai task failed: {fail_msg}"
 
         # Still in progress (waiting / queuing / generating)
-        logger.debug("kie.ai task %s state=%s, polling…", task_id, state)
+        now = time.monotonic()
+        elapsed = int(now - start)
+        if now - last_info_log >= 30:
+            logger.info("kie.ai task %s state=%s, %ds elapsed / %ds budget",
+                        task_id, state, elapsed, timeout)
+            last_info_log = now
+        else:
+            logger.debug("kie.ai task %s state=%s, %ds elapsed", task_id, state, elapsed)
         time.sleep(poll_interval)
 
     return None, f"Timed out waiting for task {task_id} after {timeout}s"
