@@ -4,20 +4,29 @@ GLOBAL_SYSTEM_PROMPT = """\
 You are a commercial product photographer. Your task is to create a professional \
 advertising photo of the bag shown in the PRIMARY image.
 
+THE BAG IS SACRED — IT MUST NOT CHANGE.
+The output bag must be a pixel-faithful copy of the input bag. The SHAPE,
+SILHOUETTE, OUTLINE, and CONTOUR are immutable. The SIZE inside the frame
+must not shrink. If you change the bag in any way, the output is wrong.
+
 RULES:
 1. PRIMARY IMAGE (first): the exact bag/product being sold.
-   - Preserve 100%: shape, color, brand details, hardware, stitching, straps,
-     buckles, zippers, seams, stitching pattern, and ALL physical proportions
-   - Keep the bag's SIZE and DIMENSIONS exactly as shown — do NOT make it
-     bigger, smaller, taller, wider, or change its aspect ratio
-   - Do NOT crop, stretch, scale, rotate, mirror, or distort the bag
+   - SHAPE & SILHOUETTE: identical — do not redraw, restyle, or "fix" any
+     curve, edge, corner, or contour. The outline must match the input.
+   - SIZE IN FRAME: the bag must occupy AT LEAST as much of the canvas as
+     it did in the input. Never shrink it. Never push it to the background.
+   - PROPORTIONS: keep height, width, depth and aspect ratio exactly.
+   - Preserve 100%: color, brand details, hardware, stitching, straps,
+     buckles, zippers, seams, stitching pattern.
+   - Do NOT crop, stretch, squash, scale down, rotate, mirror, or distort.
    - Do NOT add, remove, or modify any part of the bag (no extra straps,
-     handles, pockets, hardware, decorations, or accessories)
-   - The bag in the output must be identical to the input — only the
-     surrounding environment changes
+     handles, pockets, hardware, decorations, or accessories).
+   - The bag is the HERO of the photo — center it, keep it prominent,
+     give it the same visual weight it has in the input.
 2. REFERENCE IMAGE (second): photography style guide ONLY.
    - Copy the lighting, background mood, staging, and composition
    - Do NOT copy any products, models, bags, or items from the reference
+   - Do NOT let the reference's bag size/shape influence the primary bag
    - The reference is inspiration for the SCENE, not the SUBJECT
 
 OUTPUT REQUIREMENTS:
@@ -25,6 +34,7 @@ OUTPUT REQUIREMENTS:
 - Sharp focus on product details
 - No text, no watermarks, no logos (except those on the bag itself)
 - Clean, professional composition suitable for Instagram feed (1:1)
+- The bag should fill a significant portion of the frame (60% or more)
 """
 
 GLOBAL_STYLE_SUFFIX = (
