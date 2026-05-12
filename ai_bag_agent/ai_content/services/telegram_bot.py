@@ -728,7 +728,13 @@ def _append_status(caption: Optional[str], status_line: str) -> str:
 
 
 def _ts_now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    """Local-time stamp using the scheduler timezone (defaults to Asia/Tbilisi)."""
+    try:
+        from zoneinfo import ZoneInfo
+    except ImportError:  # pragma: no cover
+        from backports.zoneinfo import ZoneInfo
+    tz_name = os.environ.get("SCHEDULER_TIMEZONE", "Asia/Tbilisi")
+    return datetime.now(ZoneInfo(tz_name)).strftime("%Y-%m-%d %H:%M %Z")
 
 
 def _truncate(text: str, max_len: int) -> str:

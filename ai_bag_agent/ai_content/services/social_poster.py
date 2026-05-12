@@ -39,17 +39,12 @@ MAX_RETRIES = 3
 DEFAULT_FB_TEMPLATE = (
     "{bag_name} ✨\n\n"
     "ხელნაკეთი ჩანთა Tissu Georgia-სგან.\n"
-    "🛒 Order: https://tissu-page-production.up.railway.app\n\n"
-    "#TissuGeorgia #HandcraftedBags #GeorgianDesign"
+    "🛒 Order: https://tissu-page-production.up.railway.app"
 )
 
 DEFAULT_IG_TEMPLATE = (
     "{bag_name} ✨\n\n"
-    "Discover our handcrafted collection at @tissugeorgia 🤎\n\n"
-    "—\n"
-    "#TissuGeorgia #HandcraftedBags #MinimalistFashion "
-    "#SustainableLuxury #GeorgianDesign #ArtisanBags "
-    "#LeatherBag #TimelessStyle #SlowFashion #MadeInGeorgia"
+    "Discover our handcrafted collection at @tissugeorgia 🤎"
 )
 
 

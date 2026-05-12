@@ -24,7 +24,7 @@
       <div class="card-body small">
         <div><strong>Bag:</strong> {{ approval.bag.bag_name if approval.bag else '—' }}</div>
         <div><strong>Approval ID:</strong> #{{ approval.id }}</div>
-        <div><strong>Created:</strong> {{ approval.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+        <div><strong>Created:</strong> {{ approval.created_at | local_dt }}</div>
         {% if approval.reference_url %}
           <div class="mt-1">
             <a href="{{ approval.reference_url }}" target="_blank" rel="noopener"

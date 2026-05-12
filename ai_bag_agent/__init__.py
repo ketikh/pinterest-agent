@@ -42,6 +42,9 @@ def create_app(config_override: Optional[Dict] = None) -> Flask:
     def health():
         return {"status": "ok", "service": "pinterest-agent"}
 
+    # Jinja filter: render UTC datetimes in the configured local timezone
+    _register_time_filters(app)
+
     # Configure logging
     _configure_logging(app)
 
@@ -56,6 +59,26 @@ def create_app(config_override: Optional[Dict] = None) -> Flask:
         init_scheduler(app)
 
     return app
+
+
+def _register_time_filters(app: Flask) -> None:
+    """`{{ dt | local_dt }}` converts UTC datetimes to SCHEDULER_TIMEZONE."""
+    from datetime import datetime, timezone
+    try:
+        from zoneinfo import ZoneInfo
+    except ImportError:  # pragma: no cover — Python < 3.9
+        from backports.zoneinfo import ZoneInfo
+
+    tz_name = app.config.get("SCHEDULER_TIMEZONE") or "Asia/Tbilisi"
+
+    def local_dt(dt, fmt: str = "%Y-%m-%d %H:%M") -> str:
+        if dt is None:
+            return ""
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(ZoneInfo(tz_name)).strftime(fmt)
+
+    app.jinja_env.filters["local_dt"] = local_dt
 
 
 def _configure_logging(app: Flask) -> None:

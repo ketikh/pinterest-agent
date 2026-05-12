@@ -40,11 +40,11 @@
           {{ a.bag.bag_name if a.bag else 'Unknown bag' }}
         </h6>
         <small class="text-muted d-block">
-          <i class="bi bi-clock"></i> {{ a.created_at.strftime('%Y-%m-%d %H:%M') }}
+          <i class="bi bi-clock"></i> {{ a.created_at | local_dt }}
         </small>
         {% if a.responded_at %}
           <small class="text-muted d-block">
-            <i class="bi bi-reply"></i> {{ a.responded_at.strftime('%Y-%m-%d %H:%M') }}
+            <i class="bi bi-reply"></i> {{ a.responded_at | local_dt }}
           </small>
         {% endif %}
         {% if a.reference_url %}

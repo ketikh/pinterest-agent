@@ -36,14 +36,15 @@ class TestGenerateCaption:
                    return_value=sp.DEFAULT_FB_TEMPLATE):
             caption = sp.generate_caption(approval, "fb")
         assert "Laptop Bag XL" in caption
-        assert "TissuGeorgia" in caption
+        assert "Tissu Georgia" in caption
 
-    def test_ig_default_has_more_hashtags(self):
+    def test_ig_default_renders_with_bag_name(self):
         approval = MagicMock(bag=MagicMock(bag_name="Tote", id=1))
         with patch("ai_bag_agent.ai_content.models.Setting.get",
                    return_value=sp.DEFAULT_IG_TEMPLATE):
             caption = sp.generate_caption(approval, "ig")
-        assert caption.count("#") > sp.DEFAULT_FB_TEMPLATE.count("#")
+        assert "Tote" in caption
+        assert "tissugeorgia" in caption.lower()
 
     def test_custom_template_from_settings(self):
         approval = MagicMock(bag=MagicMock(bag_name="Custom", id=7))

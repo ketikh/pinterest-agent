@@ -24,10 +24,14 @@ RULES:
    - The bag is the HERO of the photo — center it, keep it prominent,
      give it the same visual weight it has in the input.
 2. REFERENCE IMAGE (second): photography style guide ONLY.
-   - Copy the lighting, background mood, staging, and composition
-   - Do NOT copy any products, models, bags, or items from the reference
-   - Do NOT let the reference's bag size/shape influence the primary bag
-   - The reference is inspiration for the SCENE, not the SUBJECT
+   - LIGHTING IS THE PRIMARY MATCH: copy the reference's lighting direction,
+     color temperature, intensity, shadow softness, and highlights — and
+     APPLY THAT SAME LIGHTING TO THE BAG. The bag must look like it was
+     photographed in the reference's lighting environment.
+   - Copy the background mood, staging, and composition as well.
+   - Do NOT copy any products, models, bags, or items from the reference.
+   - Do NOT let the reference's bag size/shape influence the primary bag.
+   - The reference is inspiration for the SCENE and LIGHT, not the SUBJECT.
 
 OUTPUT REQUIREMENTS:
 - Photorealistic, commercial studio-quality photograph
