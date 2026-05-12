@@ -30,7 +30,7 @@ from typing import Any, Awaitable, Callable, Optional
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.error import BadRequest, NetworkError, RetryAfter, TelegramError, TimedOut
-from telegram.ext import Application, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +98,11 @@ def _run_bot() -> None:
 
     application = Application.builder().token(_TELEGRAM_BOT_TOKEN).build()
     application.add_handler(CallbackQueryHandler(_handle_callback))
+    # Reply-to-photo-message → admin is overriding the captions
+    application.add_handler(MessageHandler(
+        filters.REPLY & filters.TEXT & ~filters.COMMAND,
+        _handle_caption_reply,
+    ))
     _application = application
 
     async def _startup() -> None:
@@ -183,6 +188,52 @@ async def _send_approval_request(approval_id: int, tenant_id: str) -> Optional[s
 
     await asyncio.to_thread(_save_message_id, approval_id, str(message.message_id))
     return str(message.message_id)
+
+
+async def _handle_caption_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Admin replied to an approval photo → use the reply text as the caption.
+
+    Same text is saved to both fb_caption and ig_caption (admin sends short,
+    mixed-language captions per the design — Telegram is the editor, not the
+    web UI for the common case).
+    """
+    msg = update.message
+    if msg is None or msg.reply_to_message is None:
+        return
+
+    # Only listen to the authorised chat
+    if str(msg.chat_id) != _TELEGRAM_CHAT_ID:
+        return
+
+    replied_msg_id = str(msg.reply_to_message.message_id)
+    new_caption = (msg.text or "").strip()
+    if not new_caption:
+        return
+
+    approval_id = await asyncio.to_thread(_find_approval_by_message_id, replied_msg_id)
+    if approval_id is None:
+        # Not a reply to one of our approval messages — silently ignore.
+        return
+
+    saved = await asyncio.to_thread(_set_captions_for_approval, approval_id, new_caption)
+    if not saved:
+        await _with_retry(lambda: msg.reply_text("❌ Caption save failed."))
+        return
+
+    # Re-render the approval message caption to reflect the new text
+    snapshot = await asyncio.to_thread(_load_approval_snapshot, approval_id)
+    if snapshot is not None:
+        new_full_caption = _build_caption(snapshot)
+        keyboard = _build_keyboard(approval_id, snapshot["regeneration_count"])
+        await _with_retry(lambda: _application.bot.edit_message_caption(
+            chat_id=_TELEGRAM_CHAT_ID,
+            message_id=int(replied_msg_id),
+            caption=new_full_caption,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=keyboard,
+        ))
+
+    await _with_retry(lambda: msg.reply_text(f"✅ Caption updated for #{approval_id}"))
 
 
 async def _handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -404,7 +455,37 @@ def _load_approval_snapshot(approval_id: int) -> Optional[dict]:
             "regeneration_count": a.regeneration_count,
             "telegram_message_id": a.telegram_message_id,
             "status": a.status,
+            "fb_caption": a.fb_caption,
+            "ig_caption": a.ig_caption,
         }
+
+
+def _find_approval_by_message_id(message_id: str) -> Optional[int]:
+    from ..models import PendingApproval
+    from ...extensions import db
+
+    with _flask_app.app_context():
+        a = (
+            db.session.query(PendingApproval)
+            .filter_by(telegram_message_id=message_id)
+            .first()
+        )
+        return a.id if a else None
+
+
+def _set_captions_for_approval(approval_id: int, caption: str) -> bool:
+    """Save the same caption text to both FB and IG fields."""
+    from ..models import PendingApproval
+    from ...extensions import db
+
+    with _flask_app.app_context():
+        a = db.session.get(PendingApproval, approval_id)
+        if a is None:
+            return False
+        a.fb_caption = caption
+        a.ig_caption = caption
+        db.session.commit()
+        return True
 
 
 def _save_message_id(approval_id: int, message_id: str) -> None:
@@ -441,12 +522,26 @@ def _build_caption(snapshot: dict) -> str:
         "*🎨 New AI photo ready*",
         "",
         f"📦 *Bag:* {_escape_md(snapshot['bag_name'])}",
-        f"🆔 Queue ID: #{snapshot['bag_queue_id']}",
-        f"🔄 Regeneration: {snapshot['regeneration_count']}/{MAX_REGENERATIONS}",
-        f"⏰ {_ts_now()}",
+        f"🆔 #{snapshot['bag_queue_id']} · 🔄 {snapshot['regeneration_count']}/{MAX_REGENERATIONS}",
     ]
+
+    # Show the active caption (admin's edits override AI-drafted ones; we
+    # display whichever has priority — fb_caption first since it's GE).
+    active = snapshot.get("fb_caption") or snapshot.get("ig_caption")
+    if active:
+        # Telegram captions cap at 1024 chars total. Truncate the preview if
+        # the active caption is unusually long so the metadata stays visible.
+        preview = active if len(active) <= 600 else active[:597] + "..."
+        lines.append("")
+        lines.append("📝 " + _escape_md(preview))
+
     if snapshot.get("reference_url"):
+        lines.append("")
         lines.append(f"🎯 [Reference]({snapshot['reference_url']})")
+
+    lines.append("")
+    lines.append("_💡 Reply to this message to change the caption_")
+
     return "\n".join(lines)
 
 

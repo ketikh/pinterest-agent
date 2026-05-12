@@ -210,6 +210,62 @@ class TestCallbackRouting:
 # _handle_regenerate — max-count guard
 # ---------------------------------------------------------------------------
 
+class TestCaptionReply:
+    @pytest.mark.asyncio
+    async def test_reply_from_other_chat_is_ignored(self):
+        with patch.object(tb, "_TELEGRAM_CHAT_ID", "999"):
+            msg = MagicMock()
+            msg.chat_id = 123
+            msg.reply_to_message = MagicMock(message_id=5)
+            msg.text = "new caption"
+            update = SimpleNamespace(message=msg)
+
+            # Patch DB helpers to make sure they're NOT called
+            with patch.object(tb, "_find_approval_by_message_id") as finder:
+                await tb._handle_caption_reply(update, MagicMock())
+            finder.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_reply_to_unknown_message_is_silent(self):
+        with patch.object(tb, "_TELEGRAM_CHAT_ID", "123"):
+            msg = MagicMock()
+            msg.chat_id = 123
+            msg.reply_to_message = MagicMock(message_id=999)
+            msg.text = "new caption"
+            msg.reply_text = AsyncMock()
+            update = SimpleNamespace(message=msg)
+
+            with patch.object(tb, "_find_approval_by_message_id", return_value=None):
+                await tb._handle_caption_reply(update, MagicMock())
+            msg.reply_text.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_successful_reply_saves_and_confirms(self):
+        with patch.object(tb, "_TELEGRAM_CHAT_ID", "123"):
+            msg = MagicMock()
+            msg.chat_id = 123
+            msg.reply_to_message = MagicMock(message_id=42)
+            msg.text = "ლამაზი ჩანთა ✨ #TissuGeorgia"
+            msg.reply_text = AsyncMock()
+            update = SimpleNamespace(message=msg)
+
+            snapshot = {
+                "id": 7, "bag_name": "Bag", "bag_queue_id": 1,
+                "generated_image_url": "https://x.jpg", "reference_url": None,
+                "regeneration_count": 0, "telegram_message_id": "42",
+                "status": "pending", "fb_caption": "ლამაზი ჩანთა ✨ #TissuGeorgia",
+                "ig_caption": "ლამაზი ჩანთა ✨ #TissuGeorgia",
+            }
+
+            with patch.object(tb, "_find_approval_by_message_id", return_value=7), \
+                 patch.object(tb, "_set_captions_for_approval", return_value=True) as setter, \
+                 patch.object(tb, "_load_approval_snapshot", return_value=snapshot), \
+                 patch.object(tb, "_with_retry", new=AsyncMock()):
+                await tb._handle_caption_reply(update, MagicMock())
+
+            setter.assert_called_once_with(7, "ლამაზი ჩანთა ✨ #TissuGeorgia")
+
+
 class TestRegenerateGuard:
     @pytest.mark.asyncio
     async def test_max_count_triggers_alert_and_auto_reject(self):
