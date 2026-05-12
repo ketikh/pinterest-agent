@@ -209,51 +209,62 @@ async def _handle_caption_reply(update: Update, context: ContextTypes.DEFAULT_TY
     if not text:
         return
 
-    # Cancel pending prompt request
     chat_data = context.application.chat_data[int(_TELEGRAM_CHAT_ID)]
-    awaiting_id = chat_data.get("awaiting_prompt_for")
-    if text.lower() == "/cancel" and awaiting_id is not None:
+    awaiting_prompt = chat_data.get("awaiting_prompt_for")
+    awaiting_caption = chat_data.get("awaiting_caption_for")
+
+    # /cancel — clear any pending state
+    if text.lower() == "/cancel":
+        cancelled = bool(awaiting_prompt or awaiting_caption)
         chat_data.pop("awaiting_prompt_for", None)
-        await _with_retry(lambda: msg.reply_text("OK, cancelled."))
+        chat_data.pop("awaiting_caption_for", None)
+        if cancelled:
+            await _with_retry(lambda: msg.reply_text("OK, cancelled."))
         return
 
-    # If we're waiting for a prompt addition, this reply IS the prompt.
-    if awaiting_id is not None:
+    # Pending prompt → regen with this text
+    if awaiting_prompt is not None:
         chat_data.pop("awaiting_prompt_for", None)
-        await _kick_off_prompt_regen(awaiting_id, text, msg)
+        await _kick_off_prompt_regen(awaiting_prompt, text, msg)
         return
 
-    # Otherwise: treat reply as a caption update.
+    # Pending caption (button-triggered) → save as caption
+    approval_id = awaiting_caption
+    if approval_id is not None:
+        chat_data.pop("awaiting_caption_for", None)
+        await _save_caption_and_refresh(approval_id, text, msg)
+        return
+
+    # Fallback: reply directly to a photo → save as caption (legacy path)
     if msg.reply_to_message is None:
         return
-
     replied_msg_id = str(msg.reply_to_message.message_id)
-    new_caption = text
-
     approval_id = await asyncio.to_thread(_find_approval_by_message_id, replied_msg_id)
     if approval_id is None:
-        # Not a reply to one of our approval messages — silently ignore.
         return
+    await _save_caption_and_refresh(approval_id, text, msg)
 
+
+async def _save_caption_and_refresh(approval_id: int, new_caption: str, ack_msg) -> None:
+    """Save caption to DB, re-render the photo message, ack the admin."""
     saved = await asyncio.to_thread(_set_captions_for_approval, approval_id, new_caption)
     if not saved:
-        await _with_retry(lambda: msg.reply_text("❌ Caption save failed."))
+        await _with_retry(lambda: ack_msg.reply_text("❌ Caption save failed."))
         return
 
-    # Re-render the approval message caption to reflect the new text
     snapshot = await asyncio.to_thread(_load_approval_snapshot, approval_id)
-    if snapshot is not None:
+    if snapshot is not None and snapshot.get("telegram_message_id"):
         new_full_caption = _build_caption(snapshot)
         keyboard = _build_keyboard(approval_id, snapshot["regeneration_count"])
         await _with_retry(lambda: _application.bot.edit_message_caption(
             chat_id=_TELEGRAM_CHAT_ID,
-            message_id=int(replied_msg_id),
+            message_id=int(snapshot["telegram_message_id"]),
             caption=new_full_caption,
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=keyboard,
         ))
 
-    await _with_retry(lambda: msg.reply_text(f"✅ Caption updated for #{approval_id}"))
+    await _with_retry(lambda: ack_msg.reply_text(f"✅ Caption updated for #{approval_id}"))
 
 
 async def _handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -292,8 +303,30 @@ async def _handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await _handle_regenerate(query, approval_id)
     elif action == "promptregen":
         await _handle_prompt_regen_request(query, approval_id, context)
+    elif action == "editcaption":
+        await _handle_edit_caption_request(query, approval_id, context)
     else:
         await query.answer("Unknown action", show_alert=True)
+
+
+async def _handle_edit_caption_request(query, approval_id: int, context) -> None:
+    """✏️ Edit caption button → bot asks for caption text, next reply saves it."""
+    snapshot = await asyncio.to_thread(_load_approval_snapshot, approval_id)
+    if snapshot is None:
+        await query.answer("Approval not found", show_alert=True)
+        return
+
+    context.application.chat_data[int(_TELEGRAM_CHAT_ID)]["awaiting_caption_for"] = approval_id
+    await query.answer("✏️ Send your caption")
+    await _with_retry(lambda: _application.bot.send_message(
+        chat_id=_TELEGRAM_CHAT_ID,
+        text=(
+            f"✏️ *Send the new caption for #{approval_id}*\n\n"
+            "შენი ტექსტი იქნება ერთიანად Facebook-ზე და Instagram-ზე.\n\n"
+            "_Send /cancel to skip._"
+        ),
+        parse_mode=ParseMode.MARKDOWN,
+    ))
 
 
 async def _handle_prompt_regen_request(query, approval_id: int, context) -> None:
@@ -387,8 +420,19 @@ async def _kick_off_prompt_regen(approval_id: int, extra_prompt: str, ack_msg) -
         await _with_retry(lambda: ack_msg.reply_text("❌ Max regenerations reached."))
         return
 
-    await _with_retry(lambda: ack_msg.reply_text(
-        f"🎨 Regenerating #{approval_id} with your prompt…"
+    # Visible, quoted confirmation — admin sees the prompt back so they know
+    # the bot understood it correctly.
+    confirmation = (
+        f"🎨 *Regeneration started for #{approval_id}*\n\n"
+        f"📝 *Your prompt:*\n"
+        f"> {_escape_md(_truncate(extra_prompt, 300))}\n\n"
+        "⏳ Takes 30–300s. The new photo will arrive in this chat when ready."
+    )
+    await _with_retry(lambda: _application.bot.send_message(
+        chat_id=_TELEGRAM_CHAT_ID,
+        text=confirmation,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_to_message_id=ack_msg.message_id,
     ))
 
     # Edit original approval photo: mark as regenerating, drop keyboard
@@ -632,9 +676,6 @@ def _build_caption(snapshot: dict) -> str:
         lines.append("")
         lines.append(f"🎯 [Reference]({snapshot['reference_url']})")
 
-    lines.append("")
-    lines.append("_💡 Reply to this message to change the caption_")
-
     return "\n".join(lines)
 
 
@@ -660,6 +701,12 @@ def _build_keyboard(approval_id: int, regen_count: int) -> InlineKeyboardMarkup:
                 callback_data=f"promptregen_{approval_id}",
             ),
         ])
+    buttons.append([
+        InlineKeyboardButton(
+            "✏️ Edit caption",
+            callback_data=f"editcaption_{approval_id}",
+        ),
+    ])
     return InlineKeyboardMarkup(buttons)
 
 
