@@ -50,6 +50,11 @@ def create_app(config_override: Optional[Dict] = None) -> Flask:
         from .ai_content.services.telegram_bot import init_telegram_bot
         init_telegram_bot(app)
 
+    # APScheduler — daily generate (12:00) + post (20:00) jobs
+    if not app.config.get("TESTING"):
+        from .ai_content.services.scheduler import init_scheduler
+        init_scheduler(app)
+
     return app
 
 

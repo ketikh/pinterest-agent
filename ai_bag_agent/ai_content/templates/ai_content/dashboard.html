@@ -63,12 +63,29 @@
   </div>
   <div class="col-md-6">
     <div class="stat-card">
-      <h6 class="fw-bold mb-3"><i class="bi bi-sunrise me-1 text-info"></i>Daily Workflow</h6>
-      <ol class="mb-0 text-muted small">
-        <li class="mb-1"><strong>09:00 Tbilisi</strong> — Queue-დან ფოტო → kie.ai → Telegram approval</li>
-        <li class="mb-1">დღის განმავლობაში — Telegram ✅ / ❌ / 🔄</li>
-        <li class="mb-0"><strong>20:00 Tbilisi</strong> — Approved → Facebook + Instagram</li>
-      </ol>
+      <h6 class="fw-bold mb-3"><i class="bi bi-calendar-event me-1 text-info"></i>Scheduler</h6>
+      <ul class="list-unstyled mb-0 small">
+        <li class="mb-2">
+          <strong>🌅 Generate job</strong>
+          <div class="text-muted">
+            {% if next_morning %}
+              Next: {{ next_morning.strftime('%a %d %b · %H:%M %Z') }}
+            {% else %}
+              <span class="text-warning">Not scheduled</span>
+            {% endif %}
+          </div>
+        </li>
+        <li>
+          <strong>🌆 Post job</strong>
+          <div class="text-muted">
+            {% if next_evening %}
+              Next: {{ next_evening.strftime('%a %d %b · %H:%M %Z') }}
+            {% else %}
+              <span class="text-warning">Not scheduled</span>
+            {% endif %}
+          </div>
+        </li>
+      </ul>
     </div>
   </div>
 </div>

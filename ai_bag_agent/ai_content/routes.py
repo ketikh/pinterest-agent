@@ -34,12 +34,17 @@ def dashboard():
     approved_count = PendingApproval.query.filter_by(status="approved").count()
     posted_count = PostLog.query.count()
 
+    from .services.scheduler import next_run_times
+    next_runs = next_run_times()
+
     return render_template(
         "ai_content/dashboard.html",
         queue_count=queue_count,
         pending_count=pending_count,
         approved_count=approved_count,
         posted_count=posted_count,
+        next_morning=next_runs["morning"],
+        next_evening=next_runs["evening"],
     )
 
 
