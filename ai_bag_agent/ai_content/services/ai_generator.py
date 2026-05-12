@@ -106,6 +106,12 @@ def generate_image(
             ),
         ).to_dict()
 
+    # Pad bag to 1:1 square so kie.ai (which always returns square output)
+    # doesn't squash a portrait/landscape bag to fit. White padding fills
+    # the empty space; AI replaces it with the styled background.
+    bag_url = _pad_to_square_cloudinary(bag_url)
+    reference_image_url = _pad_to_square_cloudinary(reference_image_url)
+
     prompt = build_prompt(custom_prompt)
     t_start = time.monotonic()
 
@@ -166,6 +172,22 @@ def generate_image(
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+def _pad_to_square_cloudinary(url: str) -> str:
+    """Cloudinary URL transformation: pad to 1:1 square with white background.
+
+    Keeps the bag's actual aspect ratio inside a 2048×2048 canvas so kie.ai
+    receives a pre-squared image and doesn't have to squash or crop.
+    Returns the URL unchanged when it's not a Cloudinary URL.
+    """
+    if not url or "res.cloudinary.com" not in url or "/upload/" not in url:
+        return url
+    return url.replace(
+        "/upload/",
+        "/upload/c_pad,b_white,ar_1:1,w_2048,h_2048/",
+        1,
+    )
+
 
 def _resolve_image_url(path: str) -> Optional[str]:
     """Return URL if path is already a URL, else None (local paths unsupported here)."""
