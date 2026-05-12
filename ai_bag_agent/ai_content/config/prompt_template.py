@@ -15,7 +15,21 @@ RULES:
      curve, edge, corner, or contour. The outline must match the input.
    - SIZE IN FRAME: the bag must occupy AT LEAST as much of the canvas as
      it did in the input. Never shrink it. Never push it to the background.
+   - ORIENTATION: portrait bags stay portrait (taller than wide), landscape
+     bags stay landscape (wider than tall), square stays square. Never
+     rotate, flip, or change a portrait bag into a square or horizontal one.
    - PROPORTIONS: keep height, width, depth and aspect ratio exactly.
+   - PATTERN: preserve any print, stripe, check, embroidery, or weave
+     pattern EXACTLY — same colors, same direction (vertical stripes stay
+     vertical, horizontal stay horizontal), same density and spacing.
+   - TEXTURE: preserve quilted channels, padded sections, woven texture,
+     embossing, perforations, pebbling, or smooth surfaces exactly as
+     visible in the input.
+   - CLOSURE: preserve the closure type and shape — top flap (note its
+     rounded vs sharp corners), zipper, magnetic snap, drawstring, buckle —
+     and its exact position.
+   - LABEL & LOGO POSITION: any brand label (e.g. TISSU), tag, or logo
+     stays in the SAME spot on the bag, same size, same orientation.
    - Preserve 100%: color, brand details, hardware, stitching, straps,
      buckles, zippers, seams, stitching pattern.
    - Do NOT crop, stretch, squash, scale down, rotate, mirror, or distort.
