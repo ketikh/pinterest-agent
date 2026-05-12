@@ -107,21 +107,25 @@ def queue_upload():
     db.session.add(bag)
     db.session.commit()
 
-    # "Generate immediately" — runs the full pipeline synchronously, ~60 s,
-    # then admin lands on /admin/approvals with the fresh approval visible.
+    # "Generate immediately" — pipeline runs in a background thread so the
+    # upload modal closes right away and the queue page can show live status.
     generate_now = request.form.get("generate_now", "").lower() in ("on", "true", "1")
     if generate_now:
-        from .services.orchestrator import trigger_for_bag
-        result = trigger_for_bag(bag.id)
-        if result["success"]:
-            flash(
-                f"✅ «{bag_name}» დაგენერირდა → approval #{result['approval_id']} "
-                "(Telegram-შიც გავიდა).",
-                "success",
-            )
-            return redirect(url_for("ai_content.approvals"))
-        flash(f"⚠️ «{bag_name}» queue-ში დაემატა, მაგრამ generate ჩავარდა: "
-              f"{result.get('error')}", "warning")
+        import threading
+        from flask import current_app
+        app = current_app._get_current_object()
+        bag_id = bag.id
+
+        def _run_pipeline_async():
+            with app.app_context():
+                from .services.orchestrator import trigger_for_bag
+                trigger_for_bag(bag_id)  # status persists to DB; logs handle errors
+
+        threading.Thread(target=_run_pipeline_async, daemon=True).start()
+        flash(
+            f"⏳ «{bag_name}» — generation started. Refresh the queue or watch it live.",
+            "info",
+        )
         return redirect(url_for("ai_content.queue"))
 
     flash(f"✅ «{bag_name}» დაემატა რიგს. ▶️ Trigger დააჭირე გენერაციისთვის.",
@@ -132,16 +136,25 @@ def queue_upload():
 @ai_content_bp.route("/queue/<int:bag_id>/trigger", methods=["POST"])
 @login_required
 def queue_trigger(bag_id: int):
-    from .services.orchestrator import trigger_for_bag
-    result = trigger_for_bag(bag_id)
-    if result["success"]:
-        flash(
-            f"✅ Pipeline დასრულდა. Approval #{result['approval_id']} შეიქმნა "
-            "და Telegram-ში გაიგზავნა.",
-            "success",
-        )
-    else:
-        flash(f"❌ Pipeline ჩავარდა: {result.get('error', 'unknown')}", "danger")
+    # Pre-flight: confirm the bag exists and is in a trigger-able state so we
+    # don't silently spawn a thread for a missing/done bag.
+    bag = BagQueue.query.get_or_404(bag_id)
+    if bag.status not in ("pending", "failed"):
+        flash(f"⚠️ «{bag.bag_name}» status='{bag.status}' — only pending/failed bags can be triggered.",
+              "warning")
+        return redirect(url_for("ai_content.queue"))
+
+    import threading
+    from flask import current_app
+    app = current_app._get_current_object()
+
+    def _run_pipeline_async():
+        with app.app_context():
+            from .services.orchestrator import trigger_for_bag
+            trigger_for_bag(bag_id)
+
+    threading.Thread(target=_run_pipeline_async, daemon=True).start()
+    flash(f"⏳ «{bag.bag_name}» — generation started in background.", "info")
     return redirect(url_for("ai_content.queue"))
 
 
