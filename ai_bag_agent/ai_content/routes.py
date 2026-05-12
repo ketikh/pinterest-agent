@@ -107,7 +107,25 @@ def queue_upload():
     db.session.add(bag)
     db.session.commit()
 
-    flash(f"✅ «{bag_name}» დაემატა რიგს.", "success")
+    # "Generate immediately" — runs the full pipeline synchronously, ~60 s,
+    # then admin lands on /admin/approvals with the fresh approval visible.
+    generate_now = request.form.get("generate_now", "").lower() in ("on", "true", "1")
+    if generate_now:
+        from .services.orchestrator import trigger_for_bag
+        result = trigger_for_bag(bag.id)
+        if result["success"]:
+            flash(
+                f"✅ «{bag_name}» დაგენერირდა → approval #{result['approval_id']} "
+                "(Telegram-შიც გავიდა).",
+                "success",
+            )
+            return redirect(url_for("ai_content.approvals"))
+        flash(f"⚠️ «{bag_name}» queue-ში დაემატა, მაგრამ generate ჩავარდა: "
+              f"{result.get('error')}", "warning")
+        return redirect(url_for("ai_content.queue"))
+
+    flash(f"✅ «{bag_name}» დაემატა რიგს. ▶️ Trigger დააჭირე გენერაციისთვის.",
+          "success")
     return redirect(url_for("ai_content.queue"))
 
 

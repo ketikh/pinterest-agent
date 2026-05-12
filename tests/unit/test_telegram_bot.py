@@ -16,13 +16,14 @@ from ai_bag_agent.ai_content.services import telegram_bot as tb
 # ---------------------------------------------------------------------------
 
 class TestBuildKeyboard:
-    def test_normal_keyboard_has_three_buttons(self):
+    def test_normal_keyboard_has_four_buttons(self):
         kb = tb._build_keyboard(approval_id=42, regen_count=0)
         flat = [btn for row in kb.inline_keyboard for btn in row]
-        assert len(flat) == 3
+        assert len(flat) == 4
         assert any(b.callback_data == "approve_42" for b in flat)
         assert any(b.callback_data == "reject_42" for b in flat)
         assert any(b.callback_data == "regen_42" for b in flat)
+        assert any(b.callback_data == "promptregen_42" for b in flat)
 
     def test_max_regen_replaces_regen_button_with_disabled(self):
         kb = tb._build_keyboard(approval_id=42, regen_count=tb.MAX_REGENERATIONS)
@@ -235,8 +236,11 @@ class TestCaptionReply:
             msg.reply_text = AsyncMock()
             update = SimpleNamespace(message=msg)
 
+            ctx = MagicMock()
+            ctx.application.chat_data = {123: {}}  # no awaiting_prompt_for
+
             with patch.object(tb, "_find_approval_by_message_id", return_value=None):
-                await tb._handle_caption_reply(update, MagicMock())
+                await tb._handle_caption_reply(update, ctx)
             msg.reply_text.assert_not_called()
 
     @pytest.mark.asyncio
@@ -248,6 +252,9 @@ class TestCaptionReply:
             msg.text = "ლამაზი ჩანთა ✨ #TissuGeorgia"
             msg.reply_text = AsyncMock()
             update = SimpleNamespace(message=msg)
+
+            ctx = MagicMock()
+            ctx.application.chat_data = {123: {}}
 
             snapshot = {
                 "id": 7, "bag_name": "Bag", "bag_queue_id": 1,
@@ -261,9 +268,31 @@ class TestCaptionReply:
                  patch.object(tb, "_set_captions_for_approval", return_value=True) as setter, \
                  patch.object(tb, "_load_approval_snapshot", return_value=snapshot), \
                  patch.object(tb, "_with_retry", new=AsyncMock()):
-                await tb._handle_caption_reply(update, MagicMock())
+                await tb._handle_caption_reply(update, ctx)
 
             setter.assert_called_once_with(7, "ლამაზი ჩანთა ✨ #TissuGeorgia")
+
+    @pytest.mark.asyncio
+    async def test_prompt_state_routes_to_regen(self):
+        with patch.object(tb, "_TELEGRAM_CHAT_ID", "123"):
+            msg = MagicMock()
+            msg.chat_id = 123
+            msg.reply_to_message = None
+            msg.text = "preserve original dimensions"
+            update = SimpleNamespace(message=msg)
+
+            ctx = MagicMock()
+            ctx.application.chat_data = {123: {"awaiting_prompt_for": 9}}
+
+            with patch.object(tb, "_kick_off_prompt_regen", new=AsyncMock()) as kick:
+                await tb._handle_caption_reply(update, ctx)
+
+            kick.assert_awaited_once()
+            args = kick.await_args.args
+            assert args[0] == 9
+            assert args[1] == "preserve original dimensions"
+            # State cleared
+            assert "awaiting_prompt_for" not in ctx.application.chat_data[123]
 
 
 class TestRegenerateGuard:

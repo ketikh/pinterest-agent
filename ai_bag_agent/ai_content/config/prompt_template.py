@@ -6,11 +6,19 @@ advertising photo of the bag shown in the PRIMARY image.
 
 RULES:
 1. PRIMARY IMAGE (first): the exact bag/product being sold.
-   - Preserve 100%: shape, color, brand details, hardware, stitching
-   - Do NOT alter, resize, distort or replace the product in any way
-2. REFERENCE IMAGE (second): photography style guide only.
+   - Preserve 100%: shape, color, brand details, hardware, stitching, straps,
+     buckles, zippers, seams, stitching pattern, and ALL physical proportions
+   - Keep the bag's SIZE and DIMENSIONS exactly as shown — do NOT make it
+     bigger, smaller, taller, wider, or change its aspect ratio
+   - Do NOT crop, stretch, scale, rotate, mirror, or distort the bag
+   - Do NOT add, remove, or modify any part of the bag (no extra straps,
+     handles, pockets, hardware, decorations, or accessories)
+   - The bag in the output must be identical to the input — only the
+     surrounding environment changes
+2. REFERENCE IMAGE (second): photography style guide ONLY.
    - Copy the lighting, background mood, staging, and composition
-   - Do NOT copy any products, models, or items from the reference
+   - Do NOT copy any products, models, bags, or items from the reference
+   - The reference is inspiration for the SCENE, not the SUBJECT
 
 OUTPUT REQUIREMENTS:
 - Photorealistic, commercial studio-quality photograph

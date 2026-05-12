@@ -191,24 +191,44 @@ async def _send_approval_request(approval_id: int, tenant_id: str) -> Optional[s
 
 
 async def _handle_caption_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Admin replied to an approval photo → use the reply text as the caption.
+    """Admin replied — either updating the caption, or supplying a prompt
+    after clicking the 🎨 Regen + prompt button.
 
-    Same text is saved to both fb_caption and ig_caption (admin sends short,
-    mixed-language captions per the design — Telegram is the editor, not the
-    web UI for the common case).
+    State for prompt-mode lives in `application.chat_data[chat_id]` so it
+    survives between callback and the follow-up message.
     """
     msg = update.message
-    if msg is None or msg.reply_to_message is None:
+    if msg is None:
         return
 
     # Only listen to the authorised chat
     if str(msg.chat_id) != _TELEGRAM_CHAT_ID:
         return
 
-    replied_msg_id = str(msg.reply_to_message.message_id)
-    new_caption = (msg.text or "").strip()
-    if not new_caption:
+    text = (msg.text or "").strip()
+    if not text:
         return
+
+    # Cancel pending prompt request
+    chat_data = context.application.chat_data[int(_TELEGRAM_CHAT_ID)]
+    awaiting_id = chat_data.get("awaiting_prompt_for")
+    if text.lower() == "/cancel" and awaiting_id is not None:
+        chat_data.pop("awaiting_prompt_for", None)
+        await _with_retry(lambda: msg.reply_text("OK, cancelled."))
+        return
+
+    # If we're waiting for a prompt addition, this reply IS the prompt.
+    if awaiting_id is not None:
+        chat_data.pop("awaiting_prompt_for", None)
+        await _kick_off_prompt_regen(awaiting_id, text, msg)
+        return
+
+    # Otherwise: treat reply as a caption update.
+    if msg.reply_to_message is None:
+        return
+
+    replied_msg_id = str(msg.reply_to_message.message_id)
+    new_caption = text
 
     approval_id = await asyncio.to_thread(_find_approval_by_message_id, replied_msg_id)
     if approval_id is None:
@@ -270,8 +290,37 @@ async def _handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await _handle_reject(query, approval_id)
     elif action == "regen":
         await _handle_regenerate(query, approval_id)
+    elif action == "promptregen":
+        await _handle_prompt_regen_request(query, approval_id, context)
     else:
         await query.answer("Unknown action", show_alert=True)
+
+
+async def _handle_prompt_regen_request(query, approval_id: int, context) -> None:
+    """🎨 Custom regen button → ask admin for prompt addition, then regenerate."""
+    snapshot = await asyncio.to_thread(_load_approval_snapshot, approval_id)
+    if snapshot is None:
+        await query.answer("Approval not found", show_alert=True)
+        return
+    if snapshot["regeneration_count"] >= MAX_REGENERATIONS:
+        await query.answer("Max regenerations reached", show_alert=True)
+        return
+
+    # Park state on the bot's chat-level data so the next reply knows we're
+    # waiting for a prompt and not a caption.
+    context.application.chat_data[int(_TELEGRAM_CHAT_ID)]["awaiting_prompt_for"] = approval_id
+    await query.answer("🎨 Send your prompt addition")
+    await _with_retry(lambda: _application.bot.send_message(
+        chat_id=_TELEGRAM_CHAT_ID,
+        text=(
+            f"✏️ Reply with your prompt for approval #{approval_id}\n\n"
+            "მაგ:\n"
+            "• Preserve original bag dimensions\n"
+            "• Outdoor setting, golden hour\n"
+            "• Make the background darker\n\n"
+            "Send /cancel to skip."
+        ),
+    ))
 
 
 async def _handle_approve(query, approval_id: int) -> None:
@@ -327,7 +376,43 @@ async def _handle_regenerate(query, approval_id: int) -> None:
     asyncio.create_task(_run_regeneration_pipeline(approval_id, original_caption))
 
 
-async def _run_regeneration_pipeline(old_approval_id: int, old_caption: str) -> None:
+async def _kick_off_prompt_regen(approval_id: int, extra_prompt: str, ack_msg) -> None:
+    """Admin sent a prompt addition → start a regen with it. Same UX promise
+    as the 🔄 button (immediate ack, message edited, background pipeline)."""
+    snapshot = await asyncio.to_thread(_load_approval_snapshot, approval_id)
+    if snapshot is None:
+        await _with_retry(lambda: ack_msg.reply_text("❌ Approval not found."))
+        return
+    if snapshot["regeneration_count"] >= MAX_REGENERATIONS:
+        await _with_retry(lambda: ack_msg.reply_text("❌ Max regenerations reached."))
+        return
+
+    await _with_retry(lambda: ack_msg.reply_text(
+        f"🎨 Regenerating #{approval_id} with your prompt…"
+    ))
+
+    # Edit original approval photo: mark as regenerating, drop keyboard
+    if snapshot.get("telegram_message_id"):
+        await _with_retry(lambda: _application.bot.edit_message_caption(
+            chat_id=_TELEGRAM_CHAT_ID,
+            message_id=int(snapshot["telegram_message_id"]),
+            caption=_append_status(
+                _build_caption(snapshot),
+                f"🎨 Regenerating with prompt: {_truncate(extra_prompt, 80)}",
+            ),
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=None,
+        ))
+
+    old_caption = _build_caption(snapshot)
+    asyncio.create_task(_run_regeneration_pipeline(approval_id, old_caption, extra_prompt))
+
+
+async def _run_regeneration_pipeline(
+    old_approval_id: int,
+    old_caption: str,
+    extra_prompt: str = "",
+) -> None:
     """Pinterest → kie.ai → Cloudinary → new approval row → new Telegram message.
 
     On any failure: restore the old message's keyboard so the admin can retry,
@@ -335,7 +420,9 @@ async def _run_regeneration_pipeline(old_approval_id: int, old_caption: str) -> 
     incremented on success.
     """
     try:
-        new_approval_id = await asyncio.to_thread(_blocking_regenerate, old_approval_id)
+        new_approval_id = await asyncio.to_thread(
+            _blocking_regenerate, old_approval_id, extra_prompt,
+        )
     except Exception as exc:
         logger.exception("Regeneration pipeline failed for approval %s", old_approval_id)
         await _restore_keyboard_with_error(old_approval_id, old_caption, str(exc))
@@ -353,8 +440,12 @@ async def _run_regeneration_pipeline(old_approval_id: int, old_caption: str) -> 
         logger.error("New approval %s created but Telegram send failed", new_approval_id)
 
 
-def _blocking_regenerate(old_approval_id: int) -> Optional[int]:
-    """Synchronous pipeline runner — called from a worker thread."""
+def _blocking_regenerate(old_approval_id: int, extra_prompt: str = "") -> Optional[int]:
+    """Synchronous pipeline runner — called from a worker thread.
+
+    `extra_prompt` (if non-empty) is appended to the bag's custom_prompt for
+    this one regen only — does NOT mutate the BagQueue row.
+    """
     from ..models import PendingApproval
     from ...extensions import db
     from .pinterest_client import get_random_pin
@@ -370,6 +461,8 @@ def _blocking_regenerate(old_approval_id: int) -> Optional[int]:
         bag_queue_id = bag.id
         bag_image_path = bag.image_path
         custom_prompt = bag.custom_prompt or ""
+        if extra_prompt:
+            custom_prompt = (custom_prompt + "\n" + extra_prompt).strip() if custom_prompt else extra_prompt
         tenant_id = bag.tenant_id
 
     pin_result = get_random_pin(
@@ -559,8 +652,12 @@ def _build_keyboard(approval_id: int, regen_count: int) -> InlineKeyboardMarkup:
     else:
         buttons.append([
             InlineKeyboardButton(
-                f"🔄 Regenerate ({regen_count}/{MAX_REGENERATIONS})",
+                f"🔄 Regen ({regen_count}/{MAX_REGENERATIONS})",
                 callback_data=f"regen_{approval_id}",
+            ),
+            InlineKeyboardButton(
+                "🎨 Regen + prompt",
+                callback_data=f"promptregen_{approval_id}",
             ),
         ])
     return InlineKeyboardMarkup(buttons)
