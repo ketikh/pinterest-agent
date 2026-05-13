@@ -8,5 +8,5 @@
 
 # Pin pytest to 8.x — pytest-asyncio 1.x doesn't yet support pytest 9.x.
 pytest>=8.4.2,<9
-pytest-asyncio>=1.2.0
+pytest-asyncio>=1.3.0
 pytest-mock>=3.15.1
