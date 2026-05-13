@@ -362,7 +362,22 @@ def refresh_access_token() -> Optional[str]:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _get_token() -> Optional[str]:
+def _get_token(tenant_id: str = "default") -> Optional[str]:
+    """Return a usable Pinterest access token.
+
+    Order:
+      1. OAuth flow (pinterest_oauth.get_valid_access_token) — auto-refreshes
+         when the stored token is nearing expiry.
+      2. Legacy: PINTEREST_ACCESS_TOKEN env var (24h trial token, manual).
+    """
+    try:
+        from .pinterest_oauth import get_valid_access_token
+        token = get_valid_access_token(tenant_id)
+        if token:
+            return token
+    except Exception:
+        logger.debug("pinterest_oauth lookup failed; falling back to env/settings",
+                     exc_info=True)
     return os.environ.get("PINTEREST_ACCESS_TOKEN") or _settings_get("pinterest_access_token")
 
 

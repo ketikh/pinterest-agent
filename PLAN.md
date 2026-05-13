@@ -7,7 +7,7 @@
 - [x] Stage 1: kie.ai Generator ✅ (2026-05-01)
 - [x] Stage 2: Cloudinary Uploader ✅ (2026-05-06)
 - [x] Stage 3: Pinterest Client (API v5) ✅ (2026-05-06)
-- [ ] Stage 3.5: Pinterest OAuth flow ⏸️ BLOCKED — awaiting Pinterest Trial approval
+- [x] Stage 3.5: Pinterest OAuth flow ✅ (2026-05-13, scripts/pinterest_login.py)
 - [x] Stage 4: Admin UI — Bag Queue management ✅ (2026-05-06)
 - [~] Stage 5: Telegram Bot ✅ partial (send/approve/reject live-tested; regen blocked by Pinterest)
 - [x] Stage 6: Social Poster (FB + IG) ✅ (2026-05-11, live-tested)
