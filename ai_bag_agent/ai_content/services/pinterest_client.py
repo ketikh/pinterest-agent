@@ -96,19 +96,33 @@ def get_board_id_from_url(board_url: str, tenant_id: str = "default") -> Optiona
         logger.debug("Board ID from cache: %s → %s", board_url, cached)
         return cached
 
-    slug = _slug_from_url(board_url)
+    slug = _slug_from_url(board_url)              # e.g. "tissugeorgia/laptop-bags"
+    url_tail = (slug.split("/")[-1] if slug else "")  # e.g. "laptop-bags"
     boards = get_user_boards(tenant_id)
 
     for board in boards:
-        board_slug = _slug_from_url(board.get("url", ""))
+        # 1. Full URL match
         if board.get("url", "").rstrip("/") == board_url.rstrip("/"):
             _settings_set(cache_key, board["id"])
             return board["id"]
+        # 2. Slug match from board.url (when API returns it)
+        board_slug = _slug_from_url(board.get("url", ""))
         if slug and board_slug and slug == board_slug:
             _settings_set(cache_key, board["id"])
             return board["id"]
+        # 3. Fallback: Pinterest v5 sometimes returns empty board.url, so
+        #    slugify board.name ("Laptop Bags" → "laptop-bags") and compare
+        #    against the URL's last path segment.
+        name_slug = _slugify(board.get("name", ""))
+        if url_tail and name_slug and url_tail == name_slug:
+            _settings_set(cache_key, board["id"])
+            return board["id"]
 
-    logger.error("Board not found for URL: %s — available: %s", board_url, [b["url"] for b in boards])
+    logger.error(
+        "Board not found for URL: %s — available: %s",
+        board_url,
+        [(b.get("name"), b.get("url") or "(empty)") for b in boards],
+    )
     return None
 
 
@@ -404,6 +418,20 @@ def _slug_from_url(url: str) -> Optional[str]:
     url = url.rstrip("/")
     m = re.search(r"pinterest\.com/([^/]+/[^/]+)$", url)
     return m.group(1) if m else None
+
+
+def _slugify(name: str) -> str:
+    """Convert a Pinterest board name to its URL slug.
+
+    Pinterest's web URLs are lowercased, spaces become dashes, and most
+    punctuation drops. "Laptop Bags" → "laptop-bags".
+    """
+    if not name:
+        return ""
+    s = name.lower().strip()
+    # Collapse any non-alphanumeric run into a single dash
+    s = re.sub(r"[^a-z0-9]+", "-", s)
+    return s.strip("-")
 
 
 def _to_jpg_url(url: str) -> str:

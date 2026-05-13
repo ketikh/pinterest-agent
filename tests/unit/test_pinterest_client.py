@@ -8,6 +8,7 @@ import pytest
 
 from ai_bag_agent.ai_content.services.pinterest_client import (
     _slug_from_url,
+    _slugify,
     _to_jpg_url,
     get_best_image_url,
     get_random_pin,
@@ -60,6 +61,20 @@ class TestSlugFromUrl:
 
     def test_invalid_url_returns_none(self):
         assert _slug_from_url("https://example.com") is None
+
+
+class TestSlugify:
+    def test_simple_name_lowercased_and_dashed(self):
+        assert _slugify("Laptop Bags") == "laptop-bags"
+
+    def test_punctuation_collapsed(self):
+        assert _slugify("Bag's Collection!") == "bag-s-collection"
+
+    def test_empty_returns_empty(self):
+        assert _slugify("") == ""
+
+    def test_multiple_spaces(self):
+        assert _slugify("Many   Spaces") == "many-spaces"
 
 
 class TestToJpgUrl:
