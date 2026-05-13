@@ -7,31 +7,43 @@
   <span class="text-muted small">AI Bag Content Agent</span>
 </div>
 
-<!-- Stats row -->
+<!-- Stats row — each card links to its filtered view -->
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-3">
-    <div class="stat-card">
-      <div class="text-muted small mb-1"><i class="bi bi-collection me-1"></i>Queue (pending)</div>
-      <div class="stat-number text-warning">{{ queue_count }}</div>
-    </div>
+    <a href="{{ url_for('ai_content.queue') }}" class="text-decoration-none text-reset">
+      <div class="stat-card">
+        <div class="text-muted small mb-1"><i class="bi bi-collection me-1"></i>Bags in queue</div>
+        <div class="stat-number text-warning">{{ queue_count }}</div>
+        <div class="text-muted" style="font-size:.75rem">pending generation</div>
+      </div>
+    </a>
   </div>
   <div class="col-6 col-md-3">
-    <div class="stat-card">
-      <div class="text-muted small mb-1"><i class="bi bi-hourglass-split me-1"></i>Awaiting Review</div>
-      <div class="stat-number text-primary">{{ pending_count }}</div>
-    </div>
+    <a href="{{ url_for('ai_content.approvals') }}#pending" class="text-decoration-none text-reset">
+      <div class="stat-card">
+        <div class="text-muted small mb-1"><i class="bi bi-hourglass-split me-1"></i>Awaiting Review</div>
+        <div class="stat-number text-primary">{{ pending_count }}</div>
+        <div class="text-muted" style="font-size:.75rem">decide in Telegram</div>
+      </div>
+    </a>
   </div>
   <div class="col-6 col-md-3">
-    <div class="stat-card">
-      <div class="text-muted small mb-1"><i class="bi bi-check-circle me-1"></i>Approved Today</div>
-      <div class="stat-number text-success">{{ approved_count }}</div>
-    </div>
+    <a href="{{ url_for('ai_content.approvals') }}#approved" class="text-decoration-none text-reset">
+      <div class="stat-card">
+        <div class="text-muted small mb-1"><i class="bi bi-check-circle me-1"></i>Scheduled (20:00)</div>
+        <div class="stat-number text-success">{{ approved_count }}</div>
+        <div class="text-muted" style="font-size:.75rem">approved, waiting for cron</div>
+      </div>
+    </a>
   </div>
   <div class="col-6 col-md-3">
-    <div class="stat-card">
-      <div class="text-muted small mb-1"><i class="bi bi-megaphone me-1"></i>Total Posted</div>
-      <div class="stat-number text-secondary">{{ posted_count }}</div>
-    </div>
+    <a href="{{ url_for('ai_content.posts') }}" class="text-decoration-none text-reset">
+      <div class="stat-card">
+        <div class="text-muted small mb-1"><i class="bi bi-megaphone me-1"></i>Total Posted</div>
+        <div class="stat-number text-secondary">{{ posted_count }}</div>
+        <div class="text-muted" style="font-size:.75rem">post log</div>
+      </div>
+    </a>
   </div>
 </div>
 

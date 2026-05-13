@@ -189,20 +189,16 @@ def queue_reorder():
 @ai_content_bp.route("/approvals")
 @login_required
 def approvals():
-    status_filter = request.args.get("status", "all")
-    query = PendingApproval.query
-    if status_filter != "all":
-        query = query.filter_by(status=status_filter)
-    approvals = (
-        query.order_by(PendingApproval.created_at.desc())
-        .limit(100)
+    rows = (
+        PendingApproval.query
+        .order_by(PendingApproval.created_at.desc())
+        .limit(200)
         .all()
     )
-    return render_template(
-        "ai_content/approvals.html",
-        approvals=approvals,
-        status_filter=status_filter,
-    )
+    grouped = {"pending": [], "approved": [], "posted": [], "rejected": []}
+    for a in rows:
+        grouped.setdefault(a.status, []).append(a)
+    return render_template("ai_content/approvals.html", grouped=grouped)
 
 
 @ai_content_bp.route("/approvals/<int:approval_id>/retry", methods=["POST"])
