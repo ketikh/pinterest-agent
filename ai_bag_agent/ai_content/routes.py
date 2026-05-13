@@ -217,6 +217,22 @@ def approval_retry(approval_id: int):
     return redirect(url_for("ai_content.approvals"))
 
 
+@ai_content_bp.route("/approvals/<int:approval_id>/cancel", methods=["POST"])
+@login_required
+def approval_cancel(approval_id: int):
+    """Undo an accidental approve — flips approved → rejected so 20:00 cron skips it."""
+    from datetime import datetime, timezone
+    approval = PendingApproval.query.get_or_404(approval_id)
+    if approval.status not in ("approved", "pending"):
+        flash(f"⚠️ Status='{approval.status}' — ცადო post-ი ვერ გავა.", "warning")
+        return redirect(url_for("ai_content.approvals"))
+    approval.status = "rejected"
+    approval.responded_at = datetime.now(timezone.utc)
+    db.session.commit()
+    flash(f"🛑 Approval #{approval_id} გაუქმდა — 20:00 cron-ი არ ცადებს.", "success")
+    return redirect(url_for("ai_content.approvals"))
+
+
 @ai_content_bp.route("/approvals/<int:approval_id>/edit", methods=["GET", "POST"])
 @login_required
 def approval_edit(approval_id: int):
