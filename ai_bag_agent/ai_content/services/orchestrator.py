@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from ..models import BagQueue, PendingApproval
@@ -31,8 +31,15 @@ logger = logging.getLogger(__name__)
 # Generate pipeline
 # ---------------------------------------------------------------------------
 
+RECENT_INVENTORY_DAYS = 7  # don't re-pick a product used in the last week
+
+
 def run_generate_job(tenant_id: str = "default") -> dict:
-    """Pick the next pending bag from the FIFO queue and run the full pipeline.
+    """Pick the next bag and run the full generation pipeline.
+
+    Resolution order:
+      1. Pending bag manually queued by admin (admin override)
+      2. Random in-stock product from the storefront API (auto mode)
 
     Returns: {success, bag_id, approval_id, error}
     """
@@ -43,11 +50,53 @@ def run_generate_job(tenant_id: str = "default") -> dict:
         .first()
     )
     if bag is None:
-        logger.info("Generate job: no pending bags for tenant=%s", tenant_id)
-        return {"success": False, "bag_id": None, "approval_id": None,
-                "error": "No bags in queue"}
+        bag = _pull_bag_from_inventory(tenant_id)
+
+    if bag is None:
+        logger.info("Generate job: nothing to do for tenant=%s", tenant_id)
+        return {
+            "success": False, "bag_id": None, "approval_id": None,
+            "error": "No bags in queue and storefront inventory is empty",
+        }
 
     return _run_pipeline_for_bag(bag)
+
+
+def _pull_bag_from_inventory(tenant_id: str = "default") -> Optional[BagQueue]:
+    """Pick a random in-stock product from the storefront API and queue it.
+
+    Skips any product whose name was used in the last RECENT_INVENTORY_DAYS,
+    so we don't post the same bag twice in a week. Returns the created
+    BagQueue row, or None when the storefront returns nothing usable.
+    """
+    from .inventory_client import get_random_in_stock_product
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=RECENT_INVENTORY_DAYS)
+    recent_names = {
+        r.bag_name for r in BagQueue.query.filter(
+            BagQueue.tenant_id == tenant_id,
+            BagQueue.created_at >= cutoff,
+        ).all()
+    }
+
+    product = get_random_in_stock_product(exclude_recent_names=recent_names)
+    if product is None:
+        return None
+
+    bag = BagQueue(
+        tenant_id=tenant_id,
+        bag_name=product["name"],
+        image_path=product["image_url"],
+        status="pending",
+        sort_order=0,
+    )
+    db.session.add(bag)
+    db.session.commit()
+    logger.info(
+        "Pulled bag from inventory: storefront #%s «%s» → BagQueue #%s",
+        product.get("id"), product["name"], bag.id,
+    )
+    return bag
 
 
 def trigger_for_bag(bag_id: int, tenant_id: str = "default") -> dict:

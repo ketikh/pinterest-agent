@@ -48,10 +48,62 @@ def sample_bag(flask_app):
 # ---------------------------------------------------------------------------
 
 class TestRunGenerateJob:
-    def test_no_pending_bags_returns_no_bags(self, flask_app):
-        result = orchestrator.run_generate_job(tenant_id="default")
+    def test_no_queue_and_empty_inventory_returns_error(self, flask_app):
+        with patch("ai_bag_agent.ai_content.services.inventory_client.get_random_in_stock_product",
+                   return_value=None):
+            result = orchestrator.run_generate_job(tenant_id="default")
         assert result["success"] is False
-        assert "No bags" in result["error"]
+        assert "inventory" in result["error"].lower() or "queue" in result["error"].lower()
+
+    def test_pulls_from_inventory_when_queue_empty(self, flask_app):
+        fake_product = {
+            "id": 42,
+            "name": "Tissu Large #1",
+            "image_url": "https://res.cloudinary.com/x/y.jpg",
+            "in_stock": True,
+        }
+        with patch("ai_bag_agent.ai_content.services.inventory_client.get_random_in_stock_product",
+                   return_value=fake_product), \
+             patch.object(orchestrator.pinterest_client, "get_random_pin",
+                          return_value={"success": True, "image_url": "https://p.jpg",
+                                        "pin_id": "p1", "error": None}), \
+             patch.object(orchestrator.ai_generator, "generate_image") as gen, \
+             patch.object(orchestrator.cloudinary_svc, "upload_generated_image",
+                          return_value={"success": True, "public_url": "https://cld/x.jpg"}), \
+             patch.object(orchestrator, "send_approval_request_sync", return_value="42"):
+            gen.return_value = {"success": True, "generated_url": "https://k.png",
+                                "local_path": "/tmp/x.png", "prompt_used": "p", "error": None}
+            result = orchestrator.run_generate_job()
+
+        assert result["success"] is True
+        # Verify a BagQueue row was created from the storefront product
+        from ai_bag_agent.ai_content.models import BagQueue
+        bag = BagQueue.query.get(result["bag_id"])
+        assert bag.bag_name == "Tissu Large #1"
+        assert bag.image_path == "https://res.cloudinary.com/x/y.jpg"
+        assert bag.status == "done"
+
+    def test_inventory_skips_recent_names(self, flask_app):
+        from ai_bag_agent.extensions import db
+        from ai_bag_agent.ai_content.models import BagQueue
+        # Pretend we already posted this bag yesterday
+        old = BagQueue(bag_name="Tissu Large #1",
+                       image_path="https://cld/x.jpg",
+                       status="done", sort_order=0)
+        db.session.add(old)
+        db.session.commit()
+
+        captured = {}
+
+        def fake_picker(exclude_recent_names=None):
+            captured["excluded"] = exclude_recent_names or set()
+            return None  # short-circuit; we only care about the exclusion set
+
+        with patch("ai_bag_agent.ai_content.services.inventory_client.get_random_in_stock_product",
+                   side_effect=fake_picker):
+            orchestrator.run_generate_job()
+
+        assert "Tissu Large #1" in captured["excluded"]
 
     def test_full_pipeline_success(self, flask_app, sample_bag):
         with patch.object(orchestrator.ai_generator, "generate_image") as gen, \
