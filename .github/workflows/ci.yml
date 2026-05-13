@@ -33,7 +33,8 @@ jobs:
           pip install flake8 black isort pytest-cov
 
       - name: Lint with flake8
-        run: flake8 ai_bag_agent/ tests/ --max-line-length=88 --extend-ignore=E203,W503
+        # Config lives in .flake8 — keep CLI args minimal so the config wins.
+        run: flake8 ai_bag_agent/ tests/
 
       - name: Run tests
         env:
