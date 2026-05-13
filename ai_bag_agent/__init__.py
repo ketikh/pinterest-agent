@@ -51,15 +51,27 @@ def create_app(config_override: Optional[Dict] = None) -> Flask:
     # Configure logging
     _configure_logging(app)
 
-    # Telegram bot — runs in a background thread (skip during tests)
+    # Telegram bot — runs in a background thread (skip during tests).
+    # Wrapped in try/except so a startup failure here (network, bad token,
+    # …) doesn't take down gunicorn before /health is reachable.
     if not app.config.get("TESTING") and os.environ.get("TELEGRAM_BOT_TOKEN"):
-        from .ai_content.services.telegram_bot import init_telegram_bot
-        init_telegram_bot(app)
+        try:
+            from .ai_content.services.telegram_bot import init_telegram_bot
+            init_telegram_bot(app)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "Telegram bot failed to initialise — continuing without it",
+            )
 
     # APScheduler — daily generate (12:00) + post (20:00) jobs
     if not app.config.get("TESTING"):
-        from .ai_content.services.scheduler import init_scheduler
-        init_scheduler(app)
+        try:
+            from .ai_content.services.scheduler import init_scheduler
+            init_scheduler(app)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "Scheduler failed to initialise — continuing without it",
+            )
 
     return app
 

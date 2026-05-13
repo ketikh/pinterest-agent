@@ -2,10 +2,11 @@
 builder = "nixpacks"
 
 [deploy]
-# Run DB migrations before starting gunicorn so a fresh Railway PostgreSQL
-# plugin gets all the tables on the first boot. flask --app wsgi db upgrade
-# is idempotent — safe to run on every deploy.
-startCommand = "flask --app wsgi db upgrade && gunicorn wsgi:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120"
+# Migrations + gunicorn. We use `;` instead of `&&` so a failed migration
+# (missing DB plugin, bad URL, …) doesn't prevent gunicorn from starting —
+# /health stays reachable even when DB is broken, which is the whole point
+# of a healthcheck path that doesn't touch the database.
+startCommand = "flask --app wsgi db upgrade 2>&1 | tee /tmp/migrate.log ; gunicorn wsgi:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120"
 healthcheckPath = "/health"
-healthcheckTimeout = 300
+healthcheckTimeout = 120
 restartPolicyType = "on_failure"
