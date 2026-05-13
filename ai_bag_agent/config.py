@@ -54,11 +54,19 @@ class Config:
     META_GRAPH_BASE: str = f"https://graph.facebook.com/{os.environ.get('META_API_VERSION', 'v21.0')}"
 
 
+def _normalize_db_url(url: str) -> str:
+    """Railway / Heroku still hand out the legacy `postgres://` scheme but
+    SQLAlchemy 2.x only accepts `postgresql://`. Rewrite it transparently."""
+    if url and url.startswith("postgres://"):
+        return "postgresql://" + url[len("postgres://"):]
+    return url
+
+
 def _dev_db_uri() -> str:
     """Compute absolute SQLite URI for development."""
     env_url = os.environ.get("DATABASE_URL")
     if env_url:
-        return env_url
+        return _normalize_db_url(env_url)
     base = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
     instance_dir = os.path.join(base, "instance")
     os.makedirs(instance_dir, exist_ok=True)
@@ -81,8 +89,8 @@ class TestingConfig(Config):
 class ProductionConfig(Config):
     DEBUG: bool = False
     # Evaluated lazily so import doesn't fail in non-production environments
-    SQLALCHEMY_DATABASE_URI: str = os.environ.get(
-        "DATABASE_URL", "sqlite:///instance/pinterest_agent.db"
+    SQLALCHEMY_DATABASE_URI: str = _normalize_db_url(
+        os.environ.get("DATABASE_URL", "sqlite:///instance/pinterest_agent.db")
     )
 
 

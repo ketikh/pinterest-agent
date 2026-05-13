@@ -2,7 +2,10 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "gunicorn wsgi:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120"
+# Run DB migrations before starting gunicorn so a fresh Railway PostgreSQL
+# plugin gets all the tables on the first boot. flask --app wsgi db upgrade
+# is idempotent — safe to run on every deploy.
+startCommand = "flask --app wsgi db upgrade && gunicorn wsgi:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "on_failure"
