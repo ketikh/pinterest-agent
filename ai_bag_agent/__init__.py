@@ -30,6 +30,9 @@ def create_app(config_override: Optional[Dict] = None) -> Flask:
     login_manager.init_app(app)
     csrf.init_app(app)
 
+    # Cross-origin iframe support (tissu-agent /admin/pinterest embeds us)
+    _configure_iframe_embedding(app)
+
     # Register blueprints
     from .auth import auth_bp
     from .ai_content import ai_content_bp
@@ -59,6 +62,49 @@ def create_app(config_override: Optional[Dict] = None) -> Flask:
         init_scheduler(app)
 
     return app
+
+
+def _configure_iframe_embedding(app: Flask) -> None:
+    """Let the tissu-agent admin embed our admin in an <iframe>.
+
+    Two things have to be right for the iframe to work cross-origin:
+
+    1. CSP `frame-ancestors` must allow the parent's domain (and we must
+       NOT send `X-Frame-Options: DENY`, which Flask doesn't by default).
+    2. Session cookies must have `SameSite=None; Secure` so the browser
+       sends them when the page is loaded inside the parent's frame.
+       Without this the admin's login session is invisible in the iframe.
+
+    Parent origins are configured via env (comma-separated):
+        IFRAME_PARENT_ORIGINS=https://tissu-agent-production.up.railway.app
+    """
+    parents_raw = os.environ.get(
+        "IFRAME_PARENT_ORIGINS",
+        "https://tissu-agent-production.up.railway.app",
+    )
+    parent_origins = [o.strip() for o in parents_raw.split(",") if o.strip()]
+    frame_ancestors = " ".join(["'self'"] + parent_origins)
+
+    # Cross-origin iframe cookies need SameSite=None + Secure. Only flip in
+    # production — local dev over http:// can't send Secure cookies.
+    if not app.config.get("DEBUG") and not app.config.get("TESTING"):
+        app.config.setdefault("SESSION_COOKIE_SAMESITE", "None")
+        app.config.setdefault("SESSION_COOKIE_SECURE", True)
+        app.config.setdefault("REMEMBER_COOKIE_SAMESITE", "None")
+        app.config.setdefault("REMEMBER_COOKIE_SECURE", True)
+
+    @app.after_request
+    def _set_iframe_headers(response):
+        # Drop any X-Frame-Options that Flask middleware or proxies may add;
+        # CSP frame-ancestors is the modern, granular replacement.
+        response.headers.pop("X-Frame-Options", None)
+        existing_csp = response.headers.get("Content-Security-Policy", "")
+        if "frame-ancestors" not in existing_csp:
+            sep = "; " if existing_csp else ""
+            response.headers["Content-Security-Policy"] = (
+                f"{existing_csp}{sep}frame-ancestors {frame_ancestors}"
+            )
+        return response
 
 
 def _register_time_filters(app: Flask) -> None:
