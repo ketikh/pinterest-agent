@@ -1,38 +1,85 @@
 {% extends "ai_content/base.html" %}
-{% block title %}Dashboard{% endblock %}
+{% block title %}Control Center{% endblock %}
+
+{% macro action_row(a) %}
+<div class="d-flex align-items-center gap-3 py-2 border-bottom approval-row">
+  <img src="{{ a.generated_image_url }}" loading="lazy"
+       style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;">
+  <div class="flex-grow-1 min-w-0">
+    <div class="fw-medium text-truncate">
+      {{ a.bag.bag_name if a.bag else 'Unknown' }}
+      <small class="text-muted">#{{ a.id }}</small>
+    </div>
+    <small class="text-muted d-block">
+      <i class="bi bi-clock"></i> {{ a.created_at | local_dt('%H:%M %d %b') }}
+      · regen {{ a.regeneration_count }}/3
+      {% if a.fb_caption or a.ig_caption %}
+        · <span class="text-success">✏️ caption set</span>
+      {% else %}
+        · <span class="text-muted">no caption</span>
+      {% endif %}
+    </small>
+  </div>
+  <div class="d-flex gap-1 flex-shrink-0">
+    <a href="{{ url_for('ai_content.approval_edit', approval_id=a.id) }}"
+       class="btn btn-sm btn-outline-secondary" title="Edit caption">
+      <i class="bi bi-pencil"></i>
+    </a>
+    {% if a.status == 'approved' %}
+      <form method="POST" action="{{ url_for('ai_content.approval_retry', approval_id=a.id) }}"
+            class="m-0">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-sm btn-success" title="Post now to FB + IG">
+          <i class="bi bi-rocket-takeoff"></i> Post now
+        </button>
+      </form>
+    {% endif %}
+    <form method="POST" action="{{ url_for('ai_content.approval_cancel', approval_id=a.id) }}"
+          class="m-0"
+          onsubmit="return confirm('გავაუქმო post-ი #{{ a.id }}?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-sm btn-outline-danger" title="Don't post">
+        <i class="bi bi-slash-circle"></i>
+      </button>
+    </form>
+  </div>
+</div>
+{% endmacro %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-  <h4 class="mb-0 fw-bold">Dashboard</h4>
-  <span class="text-muted small">AI Bag Content Agent</span>
+  <h4 class="mb-0 fw-bold">Control Center</h4>
+  <small class="text-muted">live status · refresh anytime</small>
 </div>
 
-<!-- Stats row — each card links to its filtered view -->
+<!-- Stats row — clickable -->
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-3">
     <a href="{{ url_for('ai_content.queue') }}" class="text-decoration-none text-reset">
       <div class="stat-card">
         <div class="text-muted small mb-1"><i class="bi bi-collection me-1"></i>Bags in queue</div>
         <div class="stat-number text-warning">{{ queue_count }}</div>
-        <div class="text-muted" style="font-size:.75rem">pending generation</div>
+        <div class="text-muted" style="font-size:.75rem">
+          {% if processing_count %}+ {{ processing_count }} generating{% else %}pending generation{% endif %}
+        </div>
       </div>
     </a>
   </div>
   <div class="col-6 col-md-3">
-    <a href="{{ url_for('ai_content.approvals') }}#pending" class="text-decoration-none text-reset">
+    <a href="#pending" class="text-decoration-none text-reset">
       <div class="stat-card">
         <div class="text-muted small mb-1"><i class="bi bi-hourglass-split me-1"></i>Awaiting Review</div>
         <div class="stat-number text-primary">{{ pending_count }}</div>
-        <div class="text-muted" style="font-size:.75rem">decide in Telegram</div>
+        <div class="text-muted" style="font-size:.75rem">decide in Telegram or below</div>
       </div>
     </a>
   </div>
   <div class="col-6 col-md-3">
-    <a href="{{ url_for('ai_content.approvals') }}#approved" class="text-decoration-none text-reset">
+    <a href="#scheduled" class="text-decoration-none text-reset">
       <div class="stat-card">
-        <div class="text-muted small mb-1"><i class="bi bi-check-circle me-1"></i>Scheduled (20:00)</div>
+        <div class="text-muted small mb-1"><i class="bi bi-check-circle me-1"></i>Scheduled 20:00</div>
         <div class="stat-number text-success">{{ approved_count }}</div>
-        <div class="text-muted" style="font-size:.75rem">approved, waiting for cron</div>
+        <div class="text-muted" style="font-size:.75rem">approved, cron waits</div>
       </div>
     </a>
   </div>
@@ -41,36 +88,130 @@
       <div class="stat-card">
         <div class="text-muted small mb-1"><i class="bi bi-megaphone me-1"></i>Total Posted</div>
         <div class="stat-number text-secondary">{{ posted_count }}</div>
-        <div class="text-muted" style="font-size:.75rem">post log</div>
+        <div class="text-muted" style="font-size:.75rem">full log</div>
       </div>
     </a>
   </div>
 </div>
 
-<!-- Daily workflow -->
+<!-- Currently generating banner -->
+{% if processing_bags %}
+<div class="alert alert-info d-flex align-items-center shadow-sm mb-4">
+  <div class="spinner-border spinner-border-sm me-3"></div>
+  <div class="flex-grow-1">
+    <strong>{{ processing_bags|length }} bag{{ 's' if processing_bags|length != 1 }} generating right now</strong>
+    <div class="small">
+      {% for b in processing_bags %}{{ b.bag_name }}{% if not loop.last %}, {% endif %}{% endfor %}
+    </div>
+  </div>
+  <a href="{{ url_for('ai_content.queue') }}" class="btn btn-sm btn-light">View queue</a>
+</div>
+{% endif %}
+
+<!-- Pending Review section -->
+<section id="pending" class="card shadow-sm mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <div>
+      <strong>🟡 Awaiting Your Review</strong>
+      <span class="badge bg-warning text-dark ms-1">{{ pending_approvals|length }}</span>
+    </div>
+    <small class="text-muted">Telegram-ში ✅/❌ ან აქედან 🚀 Post now / 🛑 Cancel</small>
+  </div>
+  <div class="card-body py-0">
+    {% if pending_approvals %}
+      {% for a in pending_approvals %}{{ action_row(a) }}{% endfor %}
+    {% else %}
+      <div class="py-4 text-center text-muted small fst-italic">— ცარიელია, ყველაფერი განხილულია —</div>
+    {% endif %}
+  </div>
+</section>
+
+<!-- Scheduled section -->
+<section id="scheduled" class="card shadow-sm mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <div>
+      <strong>🟢 Scheduled for 20:00 Tbilisi</strong>
+      <span class="badge bg-success ms-1">{{ scheduled_approvals|length }}</span>
+    </div>
+    <small class="text-muted">cron ცადებს დღეს 20:00 · ან 🚀 Post now ცადო ცადო</small>
+  </div>
+  <div class="card-body py-0">
+    {% if scheduled_approvals %}
+      {% for a in scheduled_approvals %}{{ action_row(a) }}{% endfor %}
+    {% else %}
+      <div class="py-4 text-center text-muted small fst-italic">— ცარიელია —</div>
+    {% endif %}
+  </div>
+</section>
+
+<!-- Recent Posts -->
+{% if recent_posts %}
+<section class="card shadow-sm mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <div>
+      <strong>🔵 Recent Posts</strong>
+    </div>
+    <a href="{{ url_for('ai_content.posts') }}" class="small text-decoration-none">
+      Full log →
+    </a>
+  </div>
+  <div class="card-body py-0">
+    {% for p in recent_posts %}
+      <div class="d-flex align-items-center gap-3 py-2 border-bottom">
+        <div class="flex-grow-1">
+          <div class="fw-medium">
+            {{ p.approval.bag.bag_name if p.approval and p.approval.bag else '—' }}
+            <small class="text-muted">approval #{{ p.approval_id }}</small>
+          </div>
+          <small class="text-muted">
+            {{ p.posted_at | local_dt }}
+            ·
+            {% if p.fb_status == 'success' %}
+              <a href="https://www.facebook.com/{{ p.fb_post_id }}" target="_blank" class="badge bg-success text-decoration-none">📘 FB</a>
+            {% elif p.fb_status == 'failed' %}
+              <span class="badge bg-danger" title="{{ p.fb_error }}">📘 FB ❌</span>
+            {% else %}
+              <span class="badge bg-secondary">📘 —</span>
+            {% endif %}
+            {% if p.ig_status == 'success' %}
+              <span class="badge bg-success" title="{{ p.ig_post_id }}">📷 IG</span>
+            {% elif p.ig_status == 'failed' %}
+              <span class="badge bg-danger" title="{{ p.ig_error }}">📷 IG ❌</span>
+            {% else %}
+              <span class="badge bg-secondary">📷 —</span>
+            {% endif %}
+          </small>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<!-- Manual Triggers + Scheduler -->
 <div class="row g-3">
   <div class="col-md-6">
     <div class="stat-card">
       <h6 class="fw-bold mb-3"><i class="bi bi-lightning-charge me-1 text-warning"></i>Manual Triggers</h6>
-      <p class="text-muted small mb-3">
-        ეს ღილაკები გაუშვებენ იმ pipeline-ებს, რომელიც scheduler 09:00 / 20:00-ზე ავტომატურად გაუშვებს Stage 10-ის შემდეგ.
-      </p>
       <div class="d-flex gap-2 flex-wrap">
         <form method="POST" action="{{ url_for('ai_content.jobs_run_generate') }}"
-              onsubmit="return confirm('გავუშვა Generate Job?\n(Pinterest → kie.ai → Cloudinary → Telegram, ~30–60s)')">
+              onsubmit="return confirm('გავუშვა Generate Job?')">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn btn-warning btn-sm">
             <i class="bi bi-play-fill"></i> Run Generate Job
           </button>
         </form>
         <form method="POST" action="{{ url_for('ai_content.jobs_run_post') }}"
-              onsubmit="return confirm('გავუშვა Post Job? ყველა approved approval დაიპოსტება FB + IG-ზე.')">
+              onsubmit="return confirm('გავუშვა Post Job? ყველა approved approval გავა FB + IG-ზე.')">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn btn-success btn-sm">
             <i class="bi bi-megaphone"></i> Run Post Job
           </button>
         </form>
       </div>
+      <small class="text-muted d-block mt-2">
+        Generate ცადო next pending bag-ს, Post ცადო ცადო approved-ებს FB + IG-ზე.
+      </small>
     </div>
   </div>
   <div class="col-md-6">
@@ -78,27 +219,28 @@
       <h6 class="fw-bold mb-3"><i class="bi bi-calendar-event me-1 text-info"></i>Scheduler</h6>
       <ul class="list-unstyled mb-0 small">
         <li class="mb-2">
-          <strong>🌅 Generate job</strong>
+          <strong>🌅 Generate</strong>
           <div class="text-muted">
-            {% if next_morning %}
-              Next: {{ next_morning.strftime('%a %d %b · %H:%M %Z') }}
-            {% else %}
-              <span class="text-warning">Not scheduled</span>
-            {% endif %}
+            {% if next_morning %}{{ next_morning.strftime('%a %d %b · %H:%M %Z') }}{% else %}<span class="text-warning">Not scheduled</span>{% endif %}
           </div>
         </li>
         <li>
-          <strong>🌆 Post job</strong>
+          <strong>🌆 Post</strong>
           <div class="text-muted">
-            {% if next_evening %}
-              Next: {{ next_evening.strftime('%a %d %b · %H:%M %Z') }}
-            {% else %}
-              <span class="text-warning">Not scheduled</span>
-            {% endif %}
+            {% if next_evening %}{{ next_evening.strftime('%a %d %b · %H:%M %Z') }}{% else %}<span class="text-warning">Not scheduled</span>{% endif %}
           </div>
         </li>
       </ul>
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+{% if processing_count %}
+<script>
+  // Auto-refresh while bags are still generating, so admin sees status flip
+  setTimeout(() => { window.location.reload(); }, 7000);
+</script>
+{% endif %}
 {% endblock %}

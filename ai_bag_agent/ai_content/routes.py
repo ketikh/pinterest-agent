@@ -30,9 +30,27 @@ def _allowed_file(filename: str) -> bool:
 @login_required
 def dashboard():
     queue_count = BagQueue.query.filter_by(status="pending").count()
+    processing_count = BagQueue.query.filter_by(status="processing").count()
     pending_count = PendingApproval.query.filter_by(status="pending").count()
     approved_count = PendingApproval.query.filter_by(status="approved").count()
     posted_count = PostLog.query.count()
+
+    # Inline lists for the control-center view
+    processing_bags = (
+        BagQueue.query.filter_by(status="processing")
+        .order_by(BagQueue.created_at.desc()).limit(5).all()
+    )
+    pending_approvals = (
+        PendingApproval.query.filter_by(status="pending")
+        .order_by(PendingApproval.created_at.desc()).limit(10).all()
+    )
+    scheduled_approvals = (
+        PendingApproval.query.filter_by(status="approved")
+        .order_by(PendingApproval.created_at.asc()).limit(10).all()
+    )
+    recent_posts = (
+        PostLog.query.order_by(PostLog.posted_at.desc()).limit(5).all()
+    )
 
     from .services.scheduler import next_run_times
     next_runs = next_run_times()
@@ -40,9 +58,14 @@ def dashboard():
     return render_template(
         "ai_content/dashboard.html",
         queue_count=queue_count,
+        processing_count=processing_count,
         pending_count=pending_count,
         approved_count=approved_count,
         posted_count=posted_count,
+        processing_bags=processing_bags,
+        pending_approvals=pending_approvals,
+        scheduled_approvals=scheduled_approvals,
+        recent_posts=recent_posts,
         next_morning=next_runs["morning"],
         next_evening=next_runs["evening"],
     )
