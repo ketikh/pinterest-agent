@@ -73,7 +73,33 @@ def create_app(config_override: Optional[Dict] = None) -> Flask:
                 "Scheduler failed to initialise — continuing without it",
             )
 
+    # Bootstrap the first admin if ADMIN_USERNAME / ADMIN_PASSWORD are set
+    # and the users table is empty. Idempotent.
+    if not app.config.get("TESTING"):
+        try:
+            _bootstrap_admin(app)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "Admin bootstrap skipped",
+            )
+
     return app
+
+
+def _bootstrap_admin(app: Flask) -> None:
+    username = os.environ.get("ADMIN_USERNAME")
+    password = os.environ.get("ADMIN_PASSWORD")
+    if not username or not password:
+        return
+    with app.app_context():
+        from .ai_content.models import User
+        if User.query.first() is not None:
+            return
+        user = User(username=username, role="admin")
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+        logging.getLogger(__name__).info("Bootstrapped admin user '%s'", username)
 
 
 def _configure_iframe_embedding(app: Flask) -> None:
