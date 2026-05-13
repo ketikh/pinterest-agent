@@ -12,6 +12,7 @@ from ai_bag_agent.ai_content.services import caption_generator as cg
 
 FAKE_ENV = {"ANTHROPIC_API_KEY": "sk-ant-test", "ANTHROPIC_MODEL": "claude-haiku-test"}
 
+
 # Helper — mimic an anthropic Message.content list of TextBlock objects
 def _msg(text: str) -> MagicMock:
     block = SimpleNamespace(text=text, type="text")

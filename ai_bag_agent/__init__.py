@@ -109,7 +109,7 @@ def _configure_iframe_embedding(app: Flask) -> None:
 
 def _register_time_filters(app: Flask) -> None:
     """`{{ dt | local_dt }}` converts UTC datetimes to SCHEDULER_TIMEZONE."""
-    from datetime import datetime, timezone
+    from datetime import timezone
     try:
         from zoneinfo import ZoneInfo
     except ImportError:  # pragma: no cover — Python < 3.9

@@ -339,10 +339,13 @@ async def _run_post_now(approval_id: int) -> None:
     try:
         result = await asyncio.to_thread(_blocking_post_now, approval_id)
     except Exception as exc:
+        # Bind error text outside the lambda — Python deletes `exc` when the
+        # except block exits, and flake8 (F821) is right to flag the capture.
+        error_text = _truncate(str(exc), 200)
         logger.exception("Post Now failed for #%s", approval_id)
         await _with_retry(lambda: _application.bot.send_message(
             chat_id=_TELEGRAM_CHAT_ID,
-            text=f"❌ Post Now failed for #{approval_id}: {_truncate(str(exc), 200)}",
+            text=f"❌ Post Now failed for #{approval_id}: {error_text}",
         ))
         return
 

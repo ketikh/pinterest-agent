@@ -37,6 +37,7 @@ RECENT_CACHE_DAYS = int(os.environ.get("RECENT_PIN_CACHE_DAYS", "7"))
 # Public: board discovery
 # ---------------------------------------------------------------------------
 
+
 def get_user_boards(tenant_id: str = "default") -> list:
     """GET /v5/boards — returns list of user's boards.
 

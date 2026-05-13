@@ -1,8 +1,6 @@
 """Authentication routes: login, logout."""
 
-import os
-
-import bcrypt
+import click
 from flask import flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 from flask_wtf import FlaskForm
@@ -70,10 +68,6 @@ def logout():
 # ---------------------------------------------------------------------------
 # CLI: create first admin user
 # ---------------------------------------------------------------------------
-
-import click
-from flask import current_app
-
 
 @auth_bp.cli.command("create-admin")
 @click.option("--username", prompt=True)
