@@ -2,47 +2,90 @@
 {% block title %}Control Center{% endblock %}
 
 {% macro action_row(a) %}
-<div class="d-flex align-items-center gap-3 py-2 border-bottom approval-row">
-  <img src="{{ a.generated_image_url }}" loading="lazy"
-       style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;">
-  <div class="flex-grow-1 min-w-0">
-    <div class="fw-medium text-truncate">
-      {{ a.bag.bag_name if a.bag else 'Unknown' }}
-      <small class="text-muted">#{{ a.id }}</small>
+<div class="py-2 border-bottom approval-row">
+  <div class="d-flex align-items-center gap-3">
+    <img src="{{ a.generated_image_url }}" loading="lazy"
+         style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;">
+    <div class="flex-grow-1 min-w-0">
+      <div class="fw-medium text-truncate">
+        {{ a.bag.bag_name if a.bag else 'Unknown' }}
+        <small class="text-muted">#{{ a.id }}</small>
+      </div>
+      <small class="text-muted d-block">
+        <i class="bi bi-clock"></i> {{ a.created_at | local_dt('%H:%M %d %b') }}
+        · regen {{ a.regeneration_count }}/3
+        {% if a.fb_caption or a.ig_caption %}
+          · <span class="text-success">✏️ caption set</span>
+        {% else %}
+          · <span class="text-muted">no caption</span>
+        {% endif %}
+      </small>
     </div>
-    <small class="text-muted d-block">
-      <i class="bi bi-clock"></i> {{ a.created_at | local_dt('%H:%M %d %b') }}
-      · regen {{ a.regeneration_count }}/3
-      {% if a.fb_caption or a.ig_caption %}
-        · <span class="text-success">✏️ caption set</span>
-      {% else %}
-        · <span class="text-muted">no caption</span>
-      {% endif %}
-    </small>
-  </div>
-  <div class="d-flex gap-1 flex-shrink-0">
-    <a href="{{ url_for('ai_content.approval_edit', approval_id=a.id) }}"
-       class="btn btn-sm btn-outline-secondary" title="Edit caption">
-      <i class="bi bi-pencil"></i>
-    </a>
-    {% if a.status == 'approved' %}
-      <form method="POST" action="{{ url_for('ai_content.approval_retry', approval_id=a.id) }}"
-            class="m-0">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-sm btn-success" title="Post now to FB + IG">
-          <i class="bi bi-rocket-takeoff"></i> Post now
+    <div class="d-flex gap-1 flex-wrap flex-shrink-0">
+      <a href="{{ url_for('ai_content.approval_edit', approval_id=a.id) }}"
+         class="btn btn-sm btn-outline-secondary" title="Edit caption">
+        <i class="bi bi-pencil"></i>
+      </a>
+      {% if a.status == 'pending' and a.regeneration_count < 3 %}
+        <form method="POST" action="{{ url_for('ai_content.approval_regenerate', approval_id=a.id) }}"
+              class="m-0" onsubmit="return confirm('🔄 Regenerate #{{ a.id }}? Pinterest → kie.ai-ი ცადებს ცადო.')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-sm btn-outline-warning" title="Regenerate">
+            <i class="bi bi-arrow-repeat"></i>
+          </button>
+        </form>
+        <button type="button" class="btn btn-sm btn-outline-info"
+                data-bs-toggle="collapse" data-bs-target="#regenPrompt{{ a.id }}"
+                title="Regenerate with prompt">
+          <i class="bi bi-stars"></i>
         </button>
-      </form>
-    {% endif %}
-    <form method="POST" action="{{ url_for('ai_content.approval_cancel', approval_id=a.id) }}"
-          class="m-0"
-          onsubmit="return confirm('გავაუქმო post-ი #{{ a.id }}?')">
+      {% endif %}
+      {% if a.status == 'pending' %}
+        <form method="POST" action="{{ url_for('ai_content.approval_approve', approval_id=a.id) }}"
+              class="m-0">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-sm btn-success" title="Approve (post at 20:00)">
+            <i class="bi bi-check-lg"></i> Approve
+          </button>
+        </form>
+      {% endif %}
+      {% if a.status in ('pending', 'approved') %}
+        <form method="POST" action="{{ url_for('ai_content.approval_retry', approval_id=a.id) }}"
+              class="m-0"
+              onsubmit="return confirm('🚀 Post #{{ a.id }} ცადო FB + IG-ზე?')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-sm btn-primary" title="Post NOW to FB + IG">
+            <i class="bi bi-rocket-takeoff"></i> Post now
+          </button>
+        </form>
+        <form method="POST" action="{{ url_for('ai_content.approval_cancel', approval_id=a.id) }}"
+              class="m-0"
+              onsubmit="return confirm('გავაუქმო post-ი #{{ a.id }}?')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-sm btn-outline-danger" title="Don't post">
+            <i class="bi bi-slash-circle"></i>
+          </button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+
+  {# Collapsible: regenerate with extra prompt #}
+  {% if a.status == 'pending' and a.regeneration_count < 3 %}
+  <div id="regenPrompt{{ a.id }}" class="collapse mt-2">
+    <form method="POST" action="{{ url_for('ai_content.approval_regenerate', approval_id=a.id) }}"
+          class="d-flex gap-2 align-items-start">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="btn btn-sm btn-outline-danger" title="Don't post">
-        <i class="bi bi-slash-circle"></i>
+      <input type="text" name="extra_prompt"
+             class="form-control form-control-sm"
+             placeholder="e.g. preserve dimensions, outdoor golden hour, darker background…"
+             autocomplete="off" required>
+      <button type="submit" class="btn btn-sm btn-info text-white">
+        <i class="bi bi-stars"></i> Regen + prompt
       </button>
     </form>
   </div>
+  {% endif %}
 </div>
 {% endmacro %}
 

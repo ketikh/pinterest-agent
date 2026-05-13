@@ -209,3 +209,29 @@ def retry_post(approval_id: int, tenant_id: str = "default") -> dict:
         return {"success": False,
                 "error": f"Approval status is '{approval.status}', expected 'approved'"}
     return social_poster.post_to_both(approval_id, tenant_id=tenant_id)
+
+
+def regenerate_approval(approval_id: int, extra_prompt: str = "") -> dict:
+    """Run the regen pipeline for an approval + push the new one to Telegram.
+
+    Wraps the helper that powers the 🔄 / 🎨 buttons in Telegram so the web
+    UI can call exactly the same code path.
+    """
+    from .telegram_bot import _blocking_regenerate, send_approval_request_sync
+    try:
+        new_id = _blocking_regenerate(approval_id, extra_prompt)
+    except Exception as exc:
+        logger.exception("Regenerate (web) failed for approval %s", approval_id)
+        return {"success": False, "error": str(exc), "new_approval_id": None}
+
+    if new_id is None:
+        return {"success": False, "error": "Regeneration returned no result",
+                "new_approval_id": None}
+
+    message_id = send_approval_request_sync(new_id)
+    return {
+        "success": True,
+        "new_approval_id": new_id,
+        "telegram_message_id": message_id,
+        "error": None,
+    }

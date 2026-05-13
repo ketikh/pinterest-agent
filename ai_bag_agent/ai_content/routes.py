@@ -244,12 +244,70 @@ def approval_cancel(approval_id: int):
     approval = PendingApproval.query.get_or_404(approval_id)
     if approval.status not in ("approved", "pending"):
         flash(f"⚠️ Status='{approval.status}' — ცადო post-ი ვერ გავა.", "warning")
-        return redirect(url_for("ai_content.approvals"))
+        return redirect(request.referrer or url_for("ai_content.dashboard"))
     approval.status = "rejected"
     approval.responded_at = datetime.now(timezone.utc)
     db.session.commit()
     flash(f"🛑 Approval #{approval_id} გაუქმდა — 20:00 cron-ი არ ცადებს.", "success")
-    return redirect(url_for("ai_content.approvals"))
+    return redirect(request.referrer or url_for("ai_content.dashboard"))
+
+
+@ai_content_bp.route("/approvals/<int:approval_id>/approve", methods=["POST"])
+@login_required
+def approval_approve(approval_id: int):
+    """Approve from web — same effect as the ✅ button in Telegram."""
+    from datetime import datetime, timezone
+    approval = PendingApproval.query.get_or_404(approval_id)
+    if approval.status != "pending":
+        flash(f"⚠️ Status='{approval.status}' — მხოლოდ pending-ი შეიძლება დადასტურდეს.",
+              "warning")
+        return redirect(request.referrer or url_for("ai_content.dashboard"))
+    approval.status = "approved"
+    approval.responded_at = datetime.now(timezone.utc)
+    db.session.commit()
+    flash(f"✅ Approval #{approval_id} approved — 20:00 cron-ი ცადებს გავა.", "success")
+    return redirect(request.referrer or url_for("ai_content.dashboard"))
+
+
+@ai_content_bp.route("/approvals/<int:approval_id>/regenerate", methods=["POST"])
+@login_required
+def approval_regenerate(approval_id: int):
+    """🔄 / 🎨 — re-run the pipeline (optionally with an extra prompt) in background."""
+    import threading
+    from flask import current_app
+
+    approval = PendingApproval.query.get_or_404(approval_id)
+    if approval.status not in ("pending", "rejected"):
+        flash(f"⚠️ Status='{approval.status}' — regen only on pending/rejected.", "warning")
+        return redirect(request.referrer or url_for("ai_content.dashboard"))
+    max_regen = int(os.environ.get("MAX_REGENERATIONS", "3"))
+    if approval.regeneration_count >= max_regen:
+        flash(f"⚠️ Max regenerations ({max_regen}) reached for #{approval_id}.", "warning")
+        return redirect(request.referrer or url_for("ai_content.dashboard"))
+
+    extra_prompt = (request.form.get("extra_prompt", "") or "").strip()
+    app = current_app._get_current_object()
+
+    def _run_regen():
+        with app.app_context():
+            from .services.orchestrator import regenerate_approval
+            regenerate_approval(approval_id, extra_prompt)
+
+    threading.Thread(target=_run_regen, daemon=True).start()
+    if extra_prompt:
+        flash(
+            f"🎨 Regenerating #{approval_id} with prompt: "
+            f"«{extra_prompt[:60]}{'…' if len(extra_prompt) > 60 else ''}». "
+            "ფოტო Telegram-ში მოვა 30-60s-ში.",
+            "info",
+        )
+    else:
+        flash(
+            f"🔄 Regenerating #{approval_id} in background. "
+            "ფოტო Telegram-ში მოვა 30-60s-ში.",
+            "info",
+        )
+    return redirect(request.referrer or url_for("ai_content.dashboard"))
 
 
 @ai_content_bp.route("/approvals/<int:approval_id>/edit", methods=["GET", "POST"])
