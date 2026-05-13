@@ -1,12 +1,12 @@
 # Development / test dependencies. Production deploys don't need these.
-# Install on dev box: pip install -r requirements.txt -r requirements-dev.txt
+# Install on dev box: pip install -r requirements-dev.txt
 #
 # pip-audit ignores this file because the runtime production environment
 # never installs pytest et al.
 
 -r requirements.txt
 
-pytest>=8.4.2; python_version<"3.10"
-pytest>=9.0.3; python_version>="3.10"
+# Pin pytest to 8.x — pytest-asyncio 1.x doesn't yet support pytest 9.x.
+pytest>=8.4.2,<9
 pytest-asyncio>=1.2.0
 pytest-mock>=3.15.1
