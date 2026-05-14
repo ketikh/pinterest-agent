@@ -125,7 +125,11 @@ def _run_pipeline_for_bag(bag: BagQueue) -> dict:
         logger.info("Bag %s: using manual reference_url", bag_id)
     else:
         board_url = os.environ.get("PINTEREST_BOARD_URL", "")
-        pin = pinterest_client.get_random_pin(board_url=board_url, tenant_id=tenant_id)
+        pin = pinterest_client.get_random_pin(
+            board_url=board_url,
+            tenant_id=tenant_id,
+            exclude_recent_days=0,
+        )
         if not pin["success"]:
             return _fail(bag, f"Pinterest: {pin['error']}")
         reference_url = pin["image_url"]
