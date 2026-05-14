@@ -68,8 +68,14 @@ class TestRunGenerateJob:
                           return_value={"success": True, "image_url": "https://p.jpg",
                                         "pin_id": "p1", "error": None}), \
              patch.object(orchestrator.ai_generator, "generate_image") as gen, \
-             patch.object(orchestrator.cloudinary_svc, "upload_generated_image",
+             patch.object(orchestrator.cloudinary_svc, "upload_image",
                           return_value={"success": True, "public_url": "https://cld/x.jpg"}), \
+             patch("ai_bag_agent.ai_content.services.composite.extract_bag_with_alpha",
+                   return_value=b"PNG"), \
+             patch("ai_bag_agent.ai_content.services.composite.composite_bag_on_scene",
+                   return_value=b"JPEG"), \
+             patch("ai_bag_agent.ai_content.services.composite.save_bytes_to_tmp",
+                   return_value="/tmp/c.jpg"), \
              patch.object(orchestrator, "send_approval_request_sync", return_value="42"):
             gen.return_value = {"success": True, "generated_url": "https://k.png",
                                 "local_path": "/tmp/x.png", "prompt_used": "p", "error": None}
@@ -107,7 +113,13 @@ class TestRunGenerateJob:
 
     def test_full_pipeline_success(self, flask_app, sample_bag):
         with patch.object(orchestrator.ai_generator, "generate_image") as gen, \
-             patch.object(orchestrator.cloudinary_svc, "upload_generated_image") as up, \
+             patch.object(orchestrator.cloudinary_svc, "upload_image") as up, \
+             patch("ai_bag_agent.ai_content.services.composite.extract_bag_with_alpha",
+                   return_value=b"PNG_BYTES"), \
+             patch("ai_bag_agent.ai_content.services.composite.composite_bag_on_scene",
+                   return_value=b"JPEG_BYTES"), \
+             patch("ai_bag_agent.ai_content.services.composite.save_bytes_to_tmp",
+                   return_value="/tmp/composite_xxx.jpg"), \
              patch.object(orchestrator, "send_approval_request_sync") as tg:
             gen.return_value = {
                 "success": True, "generated_url": "https://kie/raw.png",
@@ -153,7 +165,13 @@ class TestRunGenerateJob:
 
         with patch.object(orchestrator.pinterest_client, "get_random_pin") as pin, \
              patch.object(orchestrator.ai_generator, "generate_image") as gen, \
-             patch.object(orchestrator.cloudinary_svc, "upload_generated_image") as up, \
+             patch.object(orchestrator.cloudinary_svc, "upload_image") as up, \
+             patch("ai_bag_agent.ai_content.services.composite.extract_bag_with_alpha",
+                   return_value=b"PNG"), \
+             patch("ai_bag_agent.ai_content.services.composite.composite_bag_on_scene",
+                   return_value=b"JPEG"), \
+             patch("ai_bag_agent.ai_content.services.composite.save_bytes_to_tmp",
+                   return_value="/tmp/c.jpg"), \
              patch.object(orchestrator, "send_approval_request_sync", return_value="1"):
             pin.return_value = {"success": True, "image_url": "https://pin.jpg",
                                 "pin_id": "p_001", "error": None}
@@ -190,6 +208,14 @@ class TestTriggerForBag:
         from ai_bag_agent.extensions import db
         db.session.commit()
         with patch.object(orchestrator.ai_generator, "generate_image") as gen, \
+             patch.object(orchestrator.cloudinary_svc, "upload_image",
+                          return_value={"success": True, "public_url": "https://c.jpg"}), \
+             patch("ai_bag_agent.ai_content.services.composite.extract_bag_with_alpha",
+                   return_value=b"PNG"), \
+             patch("ai_bag_agent.ai_content.services.composite.composite_bag_on_scene",
+                   return_value=b"JPEG"), \
+             patch("ai_bag_agent.ai_content.services.composite.save_bytes_to_tmp",
+                   return_value="/tmp/c.jpg"), \
              patch.object(orchestrator, "send_approval_request_sync", return_value="1"):
             gen.return_value = {"success": True, "generated_url": "https://x.png",
                                 "local_path": None, "prompt_used": "p", "error": None}
