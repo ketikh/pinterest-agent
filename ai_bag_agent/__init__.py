@@ -87,29 +87,38 @@ def create_app(config_override: Optional[Dict] = None) -> Flask:
 
 
 def _bootstrap_admin(app: Flask) -> None:
+    """Ensure an admin user exists matching the ADMIN_USERNAME / ADMIN_PASSWORD
+    env vars. Runs on every boot — if the password env var was rotated, the
+    DB row is updated to match. This is the recovery hatch when the operator
+    forgets the password they set in Railway: they simply set a new
+    ADMIN_PASSWORD in Variables and the next deploy re-syncs it.
+    """
     username = os.environ.get("ADMIN_USERNAME")
     password = os.environ.get("ADMIN_PASSWORD")
     if not username or not password:
         return
     logger = logging.getLogger(__name__)
     with app.app_context():
-        # Belt-and-braces: ensure schema exists before we query Users.
-        # `flask db upgrade` runs in railway.toml's startCommand, but if it
-        # crashed silently (read-only fs, missing DB, etc) we fall back to
-        # create_all so the admin login at least works.
         try:
             db.create_all()
         except Exception:
             logger.exception("db.create_all() failed in bootstrap")
             return
         from .ai_content.models import User
-        if User.query.first() is not None:
-            return
-        user = User(username=username, role="admin")
-        user.set_password(password)
-        db.session.add(user)
-        db.session.commit()
-        logger.info("Bootstrapped admin user '%s'", username)
+        existing = User.query.filter_by(username=username).first()
+        if existing is None:
+            user = User(username=username, role="admin")
+            user.set_password(password)
+            db.session.add(user)
+            db.session.commit()
+            logger.info("Bootstrapped admin user '%s'", username)
+        else:
+            # Sync password from env so the operator can recover access by
+            # rotating ADMIN_PASSWORD in Railway Variables.
+            if not existing.check_password(password):
+                existing.set_password(password)
+                db.session.commit()
+                logger.info("Re-synced admin '%s' password from env", username)
 
 
 def _configure_iframe_embedding(app: Flask) -> None:
