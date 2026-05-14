@@ -86,12 +86,25 @@ class TestingConfig(Config):
     SECRET_KEY: str = "test-secret-key"
 
 
+def _prod_db_uri() -> str:
+    """Production DB URL — Postgres from Railway, or a SQLite fallback in /tmp.
+
+    Relying on a writable `instance/` folder inside the container is fragile
+    (Nixpacks builds to /app which is read-only on some setups). When Railway
+    has no DATABASE_URL we fall back to /tmp so the app at least boots; admin
+    is expected to add a PostgreSQL plugin for real persistence.
+    """
+    url = os.environ.get("DATABASE_URL")
+    if url:
+        return _normalize_db_url(url)
+    fallback_dir = "/tmp/pinterest-agent-data"
+    os.makedirs(fallback_dir, exist_ok=True)
+    return f"sqlite:///{fallback_dir}/pinterest_agent.db"
+
+
 class ProductionConfig(Config):
     DEBUG: bool = False
-    # Evaluated lazily so import doesn't fail in non-production environments
-    SQLALCHEMY_DATABASE_URI: str = _normalize_db_url(
-        os.environ.get("DATABASE_URL", "sqlite:///instance/pinterest_agent.db")
-    )
+    SQLALCHEMY_DATABASE_URI: str = _prod_db_uri()
 
 
 _configs = {
