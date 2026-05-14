@@ -430,27 +430,42 @@ def settings_view():
 @ai_content_bp.route("/jobs/run-generate", methods=["POST"])
 @login_required
 def jobs_run_generate():
-    from .services.orchestrator import run_generate_job
-    result = run_generate_job()
-    if result["success"]:
-        flash(
-            f"✅ Generate job: bag #{result['bag_id']} → approval "
-            f"#{result['approval_id']} (Telegram sent).",
-            "success",
-        )
-    else:
-        flash(f"⚠️ Generate job: {result.get('error')}", "warning")
+    """Fire-and-forget: pipeline runs in a daemon thread so Railway's
+    ~75 s HTTP edge timeout doesn't kill the request. Admin watches
+    progress on the queue/approvals page (which auto-refreshes)."""
+    import threading
+    from flask import current_app
+    app = current_app._get_current_object()
+
+    def _run():
+        with app.app_context():
+            from .services.orchestrator import run_generate_job
+            run_generate_job()
+
+    threading.Thread(target=_run, daemon=True).start()
+    flash(
+        "⏳ Generate job started in background. ფოტო Telegram-ში მოვა 60–180 წამში.",
+        "info",
+    )
     return redirect(url_for("ai_content.dashboard"))
 
 
 @ai_content_bp.route("/jobs/run-post", methods=["POST"])
 @login_required
 def jobs_run_post():
-    from .services.orchestrator import run_post_job
-    result = run_post_job()
+    """Fire-and-forget — same reason as run-generate."""
+    import threading
+    from flask import current_app
+    app = current_app._get_current_object()
+
+    def _run():
+        with app.app_context():
+            from .services.orchestrator import run_post_job
+            run_post_job()
+
+    threading.Thread(target=_run, daemon=True).start()
     flash(
-        f"✅ Post job: {result['posted_count']} posted, "
-        f"{result['failed_count']} failed.",
-        "success" if result["success"] else "warning",
+        "⏳ Post job started in background. ყველა approved approval გავა FB + IG-ზე.",
+        "info",
     )
     return redirect(url_for("ai_content.dashboard"))
