@@ -331,21 +331,45 @@ def _poll_for_result(
 
 
 def _download_generated(url: str, tenant_id: str) -> Optional[str]:
-    """Download generated image to storage/generated/ as local backup."""
-    storage_dir = Path(__file__).parents[3] / "storage" / "generated" / tenant_id
-    storage_dir.mkdir(parents=True, exist_ok=True)
+    """Download the kie.ai PNG, recompress to JPEG so it fits Cloudinary's
+    10 MB free-tier upload limit and Telegram's 10 MB multipart cap.
 
+    kie.ai's 2K PNG output runs 10–12 MB; uploading raw blows up at Cloudinary
+    and the resulting URL is unfetchable by Telegram. JPEG at q=88 with a
+    2048 px ceiling keeps detail while landing well under 2 MB.
+    """
+    storage_dir = Path("/tmp/pinterest-agent-data/generated") / tenant_id
+    storage_dir.mkdir(parents=True, exist_ok=True)
     timestamp = int(time.time())
-    filename = f"{tenant_id}_{timestamp}.png"
-    dest = storage_dir / filename
+    dest = storage_dir / f"{tenant_id}_{timestamp}.jpg"
 
     try:
-        resp = requests.get(url, timeout=30, stream=True)
+        resp = requests.get(url, timeout=60)
         resp.raise_for_status()
-        with open(dest, "wb") as fh:
-            for chunk in resp.iter_content(chunk_size=8192):
-                fh.write(chunk)
+    except Exception as exc:
+        logger.warning("Could not download generated image: %s", exc)
+        return None
+
+    try:
+        from io import BytesIO
+        from PIL import Image
+        img = Image.open(BytesIO(resp.content))
+        if img.mode in ("RGBA", "LA", "P"):
+            img = img.convert("RGB")
+        max_side = 2048
+        if max(img.size) > max_side:
+            img.thumbnail((max_side, max_side), Image.LANCZOS)
+        img.save(dest, format="JPEG", quality=88, optimize=True, progressive=True)
+        logger.info("Compressed generated image: %d B → %s (%d B)",
+                    len(resp.content), dest.name, dest.stat().st_size)
         return str(dest)
     except Exception as exc:
-        logger.warning("Could not download generated image to local backup: %s", exc)
-        return None
+        # Pillow failure → keep raw bytes so admin still has something to
+        # work with, even if Cloudinary upload later rejects it.
+        logger.warning("Pillow compress failed (%s) — saving raw bytes", exc)
+        dest_raw = storage_dir / f"{tenant_id}_{timestamp}_raw.png"
+        try:
+            dest_raw.write_bytes(resp.content)
+            return str(dest_raw)
+        except Exception:
+            return None
