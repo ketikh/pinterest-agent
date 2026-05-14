@@ -217,11 +217,11 @@ def _submit_task(
 ) -> Optional[str]:
     """Submit a generation task. Returns taskId or None on failure.
 
-    Note: image_input ORDER matters for Nano Banana — the LAST image is
-    treated as the primary subject. So reference goes first (style/scene)
-    and the bag goes last (the actual product being photographed).
+    Note: image_input ORDER — bag goes FIRST (PRIMARY subject), reference
+    goes second (scene/lighting guide). This matches the prompt template
+    which calls the first image "PRIMARY" and the second "REFERENCE".
     """
-    image_input = [reference_url, bag_url] if bag_url else [reference_url]
+    image_input = [bag_url, reference_url] if bag_url else [reference_url]
     payload = {
         "model": model,
         "input": {
