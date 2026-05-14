@@ -91,7 +91,17 @@ def _bootstrap_admin(app: Flask) -> None:
     password = os.environ.get("ADMIN_PASSWORD")
     if not username or not password:
         return
+    logger = logging.getLogger(__name__)
     with app.app_context():
+        # Belt-and-braces: ensure schema exists before we query Users.
+        # `flask db upgrade` runs in railway.toml's startCommand, but if it
+        # crashed silently (read-only fs, missing DB, etc) we fall back to
+        # create_all so the admin login at least works.
+        try:
+            db.create_all()
+        except Exception:
+            logger.exception("db.create_all() failed in bootstrap")
+            return
         from .ai_content.models import User
         if User.query.first() is not None:
             return
@@ -99,7 +109,7 @@ def _bootstrap_admin(app: Flask) -> None:
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
-        logging.getLogger(__name__).info("Bootstrapped admin user '%s'", username)
+        logger.info("Bootstrapped admin user '%s'", username)
 
 
 def _configure_iframe_embedding(app: Flask) -> None:
