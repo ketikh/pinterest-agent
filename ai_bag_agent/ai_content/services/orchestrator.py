@@ -131,51 +131,29 @@ def _run_pipeline_for_bag(bag: BagQueue) -> dict:
         reference_url = pin["image_url"]
         reference_pin_id = pin.get("pin_id")
 
-    # ---- 2. kie.ai generation — SCENE ONLY, no bag in image_input ------
-    # The model is told to leave a clean empty space in the centre so we can
-    # composite the original bag there. Bag pixels stay byte-identical to the
-    # input photo — admin's design is never reinterpreted by AI.
-    scene_prompt = (
-        (bag.custom_prompt or "").strip()
-        + "\n\n"
-        + "CRITICAL: Generate ONLY the scene/background — NO bag, NO product, "
-        "NO model, NO person. Leave a clean empty area in the centre of the "
-        "image (about 70% of the canvas) suitable for a product to be "
-        "composited onto later. Match the reference photo's lighting, mood, "
-        "and composition."
-    ).strip()
+    # ---- 2. kie.ai generation — both bag and reference, prompt-guarded ----
+    # The model gets BOTH images: the bag (subject) and the Pinterest reference
+    # (scene/lighting). Prompt is the strict "THE BAG IS SACRED" template
+    # plus the admin's per-bag notes — kie.ai composites realistically while
+    # being told (loudly) not to alter the bag.
     gen = ai_generator.generate_image(
         bag_image_path=bag.image_path,
         reference_image_url=reference_url,
-        custom_prompt=scene_prompt,
+        custom_prompt=bag.custom_prompt or "",
         tenant_id=tenant_id,
     )
     if not gen["success"]:
         return _fail(bag, f"kie.ai: {gen['error']}")
 
-    # ---- 3. Pixel-faithful composite: original bag onto AI scene --------
-    from .composite import (
-        composite_bag_on_scene,
-        extract_bag_with_alpha,
-        save_bytes_to_tmp,
-    )
-    bag_png = extract_bag_with_alpha(bag.image_path)
-    if bag_png is None:
-        return _fail(bag, "Background removal (rembg) failed")
-    composite_bytes = composite_bag_on_scene(bag_png, gen["generated_url"])
-    if composite_bytes is None:
-        return _fail(bag, "Composite step failed")
-    local_path = save_bytes_to_tmp(composite_bytes, suffix=".jpg")
-    logger.info("Composite ready: %d bytes → %s", len(composite_bytes), local_path)
-
-    # ---- 4. Cloudinary upload of the composite -------------------------
+    # ---- 3. Cloudinary upload (replace raw kie.ai URL with permanent one) ----
     final_url = gen["generated_url"]
-    up = cloudinary_svc.upload_image(local_path, tenant_id=tenant_id, category="generated")
-    if up.get("success"):
-        final_url = up["public_url"]
-    else:
-        logger.warning("Cloudinary upload failed for bag %s — using raw kie.ai URL: %s",
-                       bag_id, up.get("error"))
+    if gen.get("local_path"):
+        up = cloudinary_svc.upload_generated_image(gen, tenant_id=tenant_id)
+        if up.get("success"):
+            final_url = up["public_url"]
+        else:
+            logger.warning("Cloudinary upload failed for bag %s — using raw kie.ai URL: %s",
+                           bag_id, up.get("error"))
 
     # ---- 4. PendingApproval row -----------------------------------------
     # Captions are intentionally left empty — admin writes them via Telegram

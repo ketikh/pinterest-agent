@@ -72,6 +72,7 @@ def generate_image(
     reference_image_url: str,
     custom_prompt: str = "",
     tenant_id: str = "default",
+    include_bag_input: bool = True,
 ) -> dict:
     """Generate a promotional bag photo using kie.ai Nano Banana Pro.
 
@@ -116,10 +117,13 @@ def generate_image(
     t_start = time.monotonic()
 
     # Step 1 — submit task (with retries for server overload)
+    # include_bag_input=False is used by the scene-only composite pipeline:
+    # kie.ai gets ONLY the reference photo + text prompt and generates an
+    # empty scene; the bag is composited locally afterwards.
     task_id = _submit_task(
         api_key=api_key,
         model=model,
-        bag_url=bag_url,
+        bag_url=bag_url if include_bag_input else None,
         reference_url=reference_image_url,
         prompt=prompt,
         max_retries=max_retries,
