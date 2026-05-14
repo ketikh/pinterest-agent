@@ -60,10 +60,22 @@
             <label class="form-label fw-semibold">
               <i class="bi bi-facebook text-primary"></i> Facebook caption
               <small class="text-muted fw-normal">(ქართული, ≤ 3 hashtag)</small>
+              {% if not fb_is_saved %}
+                <span class="badge bg-info ms-1">auto-preview</span>
+              {% else %}
+                <span class="badge bg-success ms-1">saved</span>
+              {% endif %}
             </label>
             <textarea name="fb_caption" rows="6"
                       class="form-control small"
-                      placeholder="ცარიელი → social_poster default template გამოიყენებს">{{ approval.fb_caption or '' }}</textarea>
+                      placeholder="ცარიელი → social_poster default template გამოიყენებს">{{ fb_preview }}</textarea>
+            {% if not fb_is_saved %}
+              <div class="form-text text-info">
+                <i class="bi bi-info-circle"></i>
+                ეს არის ავტომატური preview ემოჯით.
+                შეცვალე ან Save დააჭირე რომ ეს ვერსია შეინახო.
+              </div>
+            {% endif %}
             <div class="form-text" id="fb-counter">
               <span class="fb-len">0</span> chars ·
               <span class="fb-hash">0</span> hashtags
@@ -74,10 +86,22 @@
             <label class="form-label fw-semibold">
               <i class="bi bi-instagram text-danger"></i> Instagram caption
               <small class="text-muted fw-normal">(English, 8–12 hashtags)</small>
+              {% if not ig_is_saved %}
+                <span class="badge bg-info ms-1">auto-preview</span>
+              {% else %}
+                <span class="badge bg-success ms-1">saved</span>
+              {% endif %}
             </label>
             <textarea name="ig_caption" rows="10"
                       class="form-control small"
-                      placeholder="ცარიელი → social_poster default template გამოიყენებს">{{ approval.ig_caption or '' }}</textarea>
+                      placeholder="ცარიელი → social_poster default template გამოიყენებს">{{ ig_preview }}</textarea>
+            {% if not ig_is_saved %}
+              <div class="form-text text-info">
+                <i class="bi bi-info-circle"></i>
+                ეს არის ავტომატური preview ემოჯით.
+                შეცვალე ან Save დააჭირე რომ ეს ვერსია შეინახო.
+              </div>
+            {% endif %}
             <div class="form-text" id="ig-counter">
               <span class="ig-len">0</span> chars ·
               <span class="ig-hash">0</span> hashtags

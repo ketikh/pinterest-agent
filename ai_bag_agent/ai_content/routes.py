@@ -322,7 +322,19 @@ def approval_edit(approval_id: int):
         flash("✅ Captions saved.", "success")
         return redirect(url_for("ai_content.approvals"))
 
-    return render_template("ai_content/approval_edit.html", approval=approval)
+    from .services.social_poster import generate_caption
+    fb_preview = approval.fb_caption or generate_caption(approval, platform="fb")
+    ig_preview = approval.ig_caption or generate_caption(approval, platform="ig")
+    fb_is_saved = bool(approval.fb_caption)
+    ig_is_saved = bool(approval.ig_caption)
+    return render_template(
+        "ai_content/approval_edit.html",
+        approval=approval,
+        fb_preview=fb_preview,
+        ig_preview=ig_preview,
+        fb_is_saved=fb_is_saved,
+        ig_is_saved=ig_is_saved,
+    )
 
 
 @ai_content_bp.route("/approvals/<int:approval_id>/regenerate-captions", methods=["POST"])
