@@ -215,12 +215,18 @@ def _submit_task(
     prompt: str,
     max_retries: int = 3,
 ) -> Optional[str]:
-    """Submit a generation task. Returns taskId or None on failure."""
+    """Submit a generation task. Returns taskId or None on failure.
+
+    Note: image_input ORDER matters for Nano Banana — the LAST image is
+    treated as the primary subject. So reference goes first (style/scene)
+    and the bag goes last (the actual product being photographed).
+    """
+    image_input = [reference_url, bag_url] if bag_url else [reference_url]
     payload = {
         "model": model,
         "input": {
             "prompt": prompt,
-            "image_input": [bag_url, reference_url],
+            "image_input": image_input,
             "aspect_ratio": "1:1",
             "resolution": "2K",
             "output_format": "png",

@@ -1,34 +1,30 @@
 """Global prompt template for kie.ai Nano Banana Pro image generation."""
 
 GLOBAL_SYSTEM_PROMPT = """\
-TASK: Photograph the exact bag from Image 1 placed inside a scene that
-matches the lighting, mood and styling of Image 2.
+TASK: Generate a commercial product photograph.
 
-IMAGE 1 — THE BAG (subject):
-Use this bag exactly as shown. Keep its shape, colour, pattern, fabric
-texture, stitching, label, closure and proportions identical to the
-input. Do not redraw, redesign, recolour, resize, rotate, flip,
-duplicate, ghost, or overlay the bag. The bag appears ONCE in the
-output, with one solid clean silhouette — no transparency, no double
-exposure, no blended copies.
+You are given TWO input images:
+  • FIRST image = SCENE REFERENCE. Only its lighting, background mood,
+    materials, and overall styling matter. IGNORE any bag, product,
+    model, or accessory shown in this image — do not copy them.
+  • SECOND image = THE BAG. This is the actual product to photograph.
+    Keep it exactly as shown — same shape, same colour, same pattern,
+    same fabric texture, same stitching, same label, same closure,
+    same proportions, same orientation. The bag in the output must be
+    the SECOND image, not the FIRST.
 
-IMAGE 2 — THE SCENE (reference for style only):
-Take the lighting direction, colour temperature, shadow softness,
-background materials, and overall mood from this image. Build a new
-scene around the bag using that look. Do not copy the bag, model, or
-product from this image.
-
-OUTPUT:
-A single, photorealistic product photograph. The bag from Image 1
-sits naturally in the scene inspired by Image 2 — like a real
-commercial shoot. 1:1 square, sharp focus, clean composition, no
-text or watermarks, no extra products.
+Output:
+A single photorealistic photo of the SECOND image's bag, placed
+naturally inside a new scene that takes its style cues from the FIRST
+image. The bag appears ONCE — one solid silhouette, no transparency,
+no ghosting, no duplicated copies, no blending with the reference's
+bag. 1:1 square, sharp focus, no text or watermarks.
 """
 
 GLOBAL_STYLE_SUFFIX = (
     "Commercial product photography. "
     "High-end fashion e-commerce. "
-    "Professional studio lighting that matches the reference's mood."
+    "Professional studio lighting that matches the scene reference's mood."
 )
 
 
