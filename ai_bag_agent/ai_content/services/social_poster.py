@@ -36,16 +36,9 @@ HTTP_TIMEOUT_SEC = 30
 MAX_RETRIES = 3
 
 # Hardcoded defaults — overridable via Setting('fb_caption_template' / 'ig_caption_template')
-DEFAULT_FB_TEMPLATE = (
-    "{bag_name} {emoji}\n\n"
-    "ხელნაკეთი ჩანთა Tissu Georgia-სგან.\n"
-    "🛒 Order: https://tissu-page-production.up.railway.app"
-)
-
-DEFAULT_IG_TEMPLATE = (
-    "{bag_name} {emoji}\n\n"
-    "Discover our handcrafted collection at @tissugeorgia 🤎"
-)
+# Admin asked for emoji-only captions: no bag name, no link, no marketing text.
+DEFAULT_FB_TEMPLATE = "{emoji}"
+DEFAULT_IG_TEMPLATE = "{emoji}"
 
 # Keyword → emoji map. Used as a default decoration when admin didn't write
 # a caption — picks something tonally appropriate from the bag's name.
