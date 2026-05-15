@@ -82,6 +82,63 @@
     </div>
 
     <div class="card shadow-sm mt-3">
+      <div class="card-header bg-white">
+        <strong><i class="bi bi-pinterest text-danger"></i> Pinterest OAuth</strong>
+        <small class="text-muted d-block">
+          ერთხელ დააკავშირე — ტოკენი 30 დღე ცოცხლობს და თვითონ ახლდება
+        </small>
+      </div>
+      <div class="card-body small">
+        {% if not pinterest_status.configured %}
+          <div class="alert alert-warning py-2 mb-2">
+            <strong>PINTEREST_APP_SECRET</strong> არ არის Railway-ში.
+            ეს Pinterest App-ის "App Secret" ველიდან აიღე.
+          </div>
+        {% endif %}
+
+        {% if pinterest_status.connected %}
+          <div class="mb-2">
+            <span class="badge bg-success">✅ Connected</span>
+            {% if pinterest_status.expires_in_days is not none %}
+              {% if pinterest_status.expires_in_days > 1 %}
+                <small class="text-muted">
+                  access token: ~{{ pinterest_status.expires_in_days }} დღე დარჩა
+                </small>
+              {% else %}
+                <small class="text-danger">
+                  access token იწურება — შემდეგ generation-ზე ავტომატურად განახლდება
+                </small>
+              {% endif %}
+            {% endif %}
+          </div>
+          <a href="{{ url_for('ai_content.pinterest_oauth_connect') }}"
+             class="btn btn-sm btn-outline-secondary w-100">
+            <i class="bi bi-arrow-repeat"></i> Reconnect (switch account)
+          </a>
+        {% else %}
+          <div class="mb-2">
+            <span class="badge bg-warning text-dark">⚠ Not connected</span>
+            <small class="d-block text-muted mt-1">
+              ახლა trial token-ზე ვართ (24 საათი). ერთხელ Connect-ი და მუდმივი ხდება.
+            </small>
+          </div>
+          <a href="{{ url_for('ai_content.pinterest_oauth_connect') }}"
+             class="btn btn-sm btn-danger w-100"
+             {% if not pinterest_status.configured %}aria-disabled="true"
+             style="pointer-events:none;opacity:.5"{% endif %}>
+            <i class="bi bi-link-45deg"></i> Connect Pinterest
+          </a>
+        {% endif %}
+
+        <hr class="my-2">
+        <div class="text-muted" style="font-size: 0.78rem; word-break: break-all">
+          <strong>Redirect URI (Pinterest App-ში დააფიქსირე):</strong><br>
+          <code>{{ pinterest_status.redirect_uri }}</code>
+        </div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm mt-3">
       <div class="card-header bg-white"><strong>Schedule</strong></div>
       <div class="card-body small">
         Schedule editing საჭიროა Stage 10-მდე

@@ -6,7 +6,10 @@ import os
 import pathlib
 import tempfile
 
-from flask import flash, redirect, render_template, request, url_for
+import secrets
+from datetime import datetime, timezone
+
+from flask import flash, redirect, render_template, request, session, url_for
 from flask_login import login_required
 from werkzeug.utils import secure_filename
 
@@ -428,11 +431,86 @@ def settings_view():
         (label, bool(os.environ.get(env_key)))
         for env_key, label in _CREDENTIAL_KEYS
     ]
+    pinterest_status = _pinterest_oauth_status()
     return render_template(
         "ai_content/settings.html",
         values=values,
         credentials=credentials,
+        pinterest_status=pinterest_status,
     )
+
+
+def _pinterest_oauth_status() -> dict:
+    """Return current Pinterest OAuth state for the Settings widget."""
+    has_secret = bool(os.environ.get("PINTEREST_APP_SECRET"))
+    redirect_uri = os.environ.get(
+        "PINTEREST_REDIRECT_URI", "http://localhost:8080/oauth/callback",
+    )
+    refresh_token = Setting.get("pinterest_refresh_token", default="") or ""
+    expires_raw = Setting.get("pinterest_token_expires_at", default="") or ""
+    days_left = None
+    if expires_raw:
+        try:
+            dt = datetime.fromisoformat(expires_raw)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            days_left = round((dt - datetime.now(timezone.utc)).total_seconds() / 86400, 1)
+        except ValueError:
+            pass
+    return {
+        "configured": has_secret,
+        "redirect_uri": redirect_uri,
+        "connected": bool(refresh_token),
+        "expires_in_days": days_left,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Pinterest OAuth — one-time admin click → tokens auto-refresh from then on
+# ---------------------------------------------------------------------------
+
+@ai_content_bp.route("/pinterest/oauth/connect")
+@login_required
+def pinterest_oauth_connect():
+    """Start the Pinterest OAuth flow — redirects the admin to Pinterest."""
+    from .services.pinterest_oauth import get_authorization_url
+    state = secrets.token_urlsafe(24)
+    session["pinterest_oauth_state"] = state
+    try:
+        url = get_authorization_url(state=state)
+    except RuntimeError as exc:
+        flash(f"❌ Pinterest OAuth not configured: {exc}", "danger")
+        return redirect(url_for("ai_content.settings_view"))
+    return redirect(url)
+
+
+@ai_content_bp.route("/pinterest/oauth/callback")
+@login_required
+def pinterest_oauth_callback():
+    """Pinterest redirects here with ?code=... after admin clicks Allow."""
+    from .services.pinterest_oauth import exchange_code_for_tokens
+
+    error = request.args.get("error")
+    if error:
+        flash(f"❌ Pinterest denied access: {error}", "danger")
+        return redirect(url_for("ai_content.settings_view"))
+
+    code = request.args.get("code")
+    state = request.args.get("state")
+    expected = session.pop("pinterest_oauth_state", None)
+    if not code or state != expected:
+        flash("❌ Pinterest OAuth state mismatch — try Connect again.", "danger")
+        return redirect(url_for("ai_content.settings_view"))
+
+    result = exchange_code_for_tokens(code)
+    if not result["success"]:
+        flash(f"❌ Token exchange failed: {result['error']}", "danger")
+        return redirect(url_for("ai_content.settings_view"))
+
+    days = round(result["expires_in"] / 86400)
+    flash(f"✅ Pinterest connected — access token valid for ~{days} days, "
+          "refresh token saved (auto-renews going forward).", "success")
+    return redirect(url_for("ai_content.settings_view"))
 
 
 # ---------------------------------------------------------------------------
