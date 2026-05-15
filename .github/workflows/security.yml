@@ -1,12 +1,15 @@
 name: Security
 
+# Disabled automatic triggers per operator request — same reason as ci.yml.
+# Re-enable by uncommenting the blocks below.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  schedule:
-    - cron: "0 9 * * 1"  # Every Monday 09:00 UTC
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+  # pull_request:
+  #   branches: [main]
+  # schedule:
+  #   - cron: "0 9 * * 1"  # Every Monday 09:00 UTC
 
 permissions:
   contents: read
