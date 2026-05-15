@@ -50,7 +50,7 @@ jobs:
           python -m pytest tests/unit/ -v --cov=ai_bag_agent --cov-report=xml --cov-fail-under=50
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         if: matrix.python-version == '3.11'
         with:
           files: coverage.xml
