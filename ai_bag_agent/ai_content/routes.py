@@ -432,11 +432,17 @@ def settings_view():
         for env_key, label in _CREDENTIAL_KEYS
     ]
     pinterest_status = _pinterest_oauth_status()
+    try:
+        from .services.scheduler import next_run_times
+        next_runs = next_run_times()
+    except Exception:
+        next_runs = None
     return render_template(
         "ai_content/settings.html",
         values=values,
         credentials=credentials,
         pinterest_status=pinterest_status,
+        next_runs=next_runs,
     )
 
 

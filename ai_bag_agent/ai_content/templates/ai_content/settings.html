@@ -139,16 +139,27 @@
     </div>
 
     <div class="card shadow-sm mt-3">
-      <div class="card-header bg-white"><strong>Schedule</strong></div>
+      <div class="card-header bg-white">
+        <strong>Schedule</strong>
+        <span class="badge bg-success ms-1">✅ Active</span>
+      </div>
       <div class="card-body small">
-        Schedule editing საჭიროა Stage 10-მდე
-        (<a href="https://github.com/" class="text-muted">scheduler ჯერ არ მუშაობს</a>).
-        ახლა საათები მითითებულია <code>.env</code>-ში:
-        <ul class="mb-0 mt-2">
+        Scheduler მუშაობს. დროები ენვ ცვლადებში არის — Railway → Variables.
+        <ul class="mb-2 mt-2">
           <li>Morning generate: <code>{{ config.MORNING_JOB_HOUR }}:{{ '%02d'|format(config.MORNING_JOB_MINUTE) }}</code></li>
           <li>Evening post: <code>{{ config.EVENING_JOB_HOUR }}:{{ '%02d'|format(config.EVENING_JOB_MINUTE) }}</code></li>
           <li>Timezone: <code>{{ config.SCHEDULER_TIMEZONE }}</code></li>
         </ul>
+        {% if next_runs %}
+          <div class="text-muted" style="font-size: 0.78rem">
+            {% if next_runs.morning %}
+              <div>შემდეგი generate: <code>{{ next_runs.morning | local_dt }}</code></div>
+            {% endif %}
+            {% if next_runs.evening %}
+              <div>შემდეგი post: <code>{{ next_runs.evening | local_dt }}</code></div>
+            {% endif %}
+          </div>
+        {% endif %}
       </div>
     </div>
   </div>
