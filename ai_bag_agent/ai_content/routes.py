@@ -239,6 +239,19 @@ def approval_retry(approval_id: int):
     return redirect(url_for("ai_content.approvals"))
 
 
+@ai_content_bp.route("/approvals/<int:approval_id>/retry-fb", methods=["POST"])
+@login_required
+def approval_retry_fb(approval_id: int):
+    """Retry only the Facebook half — used when IG already posted but FB failed."""
+    from .services.social_poster import post_to_facebook_only
+    result = post_to_facebook_only(approval_id)
+    if result.get("success"):
+        flash("✅ Facebook-ზე გამოქვეყნდა.", "success")
+    else:
+        flash(f"❌ FB: {result.get('error', 'unknown')}", "danger")
+    return redirect(url_for("ai_content.approvals"))
+
+
 @ai_content_bp.route("/approvals/<int:approval_id>/cancel", methods=["POST"])
 @login_required
 def approval_cancel(approval_id: int):

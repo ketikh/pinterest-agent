@@ -140,6 +140,51 @@ def post_to_both(approval_id: int, tenant_id: str = "default") -> dict:
 # Public: per-platform posters
 # ---------------------------------------------------------------------------
 
+def post_to_facebook_only(approval_id: int, tenant_id: str = "default") -> dict:
+    """Retry just the Facebook half of an approval (IG already succeeded).
+
+    Used when post_to_both posted to IG but FB failed (e.g. wrong token type).
+    Updates the existing PostLog row's fb_* fields instead of creating a duplicate
+    log. Does NOT call post_to_instagram so we don't double-publish there.
+
+    Returns: {success, fb_status, fb_post_id, error}
+    """
+    from ..models import PendingApproval, PostLog
+    from ...extensions import db
+
+    approval = db.session.get(PendingApproval, approval_id)
+    if approval is None:
+        return _err("Approval not found")
+    if not approval.generated_image_url:
+        return _err("Approval has no generated_image_url")
+
+    caption = approval.fb_caption or generate_caption(approval, platform="fb")
+    fb_result = post_to_facebook(approval.generated_image_url, caption, tenant_id)
+
+    log = approval.post_log
+    if log is None:
+        log = PostLog(tenant_id=tenant_id, approval_id=approval_id, caption=caption)
+        db.session.add(log)
+    log.fb_status = "success" if fb_result["success"] else "failed"
+    log.fb_post_id = fb_result.get("post_id")
+    log.fb_error = fb_result.get("error")
+
+    if fb_result["success"]:
+        approval.status = "posted"
+        approval.responded_at = datetime.now(timezone.utc)
+        if approval.bag is not None:
+            approval.bag.status = "done"
+            approval.bag.processed_at = datetime.now(timezone.utc)
+
+    db.session.commit()
+    return {
+        "success": fb_result["success"],
+        "fb_status": log.fb_status,
+        "fb_post_id": fb_result.get("post_id"),
+        "error": fb_result.get("error"),
+    }
+
+
 def post_to_facebook(image_url: str, caption: str, tenant_id: str = "default") -> dict:
     """POST /{page_id}/photos — publishes a photo to the Facebook Page.
 

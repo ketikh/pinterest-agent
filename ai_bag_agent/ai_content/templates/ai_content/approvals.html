@@ -55,6 +55,16 @@
           </form>
         {% endif %}
       </div>
+      {% if a.post_log and a.post_log.fb_status == 'failed' %}
+        <form method="POST" action="{{ url_for('ai_content.approval_retry_fb', approval_id=a.id) }}"
+              class="mb-2">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-sm btn-primary w-100">
+            <i class="bi bi-facebook"></i> Retry FB only
+            <small class="d-block">IG-ზე უკვე გავიდა</small>
+          </button>
+        </form>
+      {% endif %}
       {% if a.status in ('approved', 'pending') %}
         <form method="POST" action="{{ url_for('ai_content.approval_cancel', approval_id=a.id) }}"
               onsubmit="return confirm('გავაუქმო post-ი #{{ a.id }}? Approval გადავა rejected-ში.')">
