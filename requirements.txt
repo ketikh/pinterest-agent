@@ -9,7 +9,7 @@ blinker==1.9.0
 cachetools==5.5.2
 certifi==2026.4.22
 charset-normalizer==3.4.7
-click==8.1.8
+click==8.4.0
 cloudinary==1.44.2
 distro==1.9.0
 docstring_parser==0.18.0
