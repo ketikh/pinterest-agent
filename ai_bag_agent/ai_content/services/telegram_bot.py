@@ -109,9 +109,14 @@ def _run_bot() -> None:
         .build()
     )
     application.add_handler(CallbackQueryHandler(_handle_callback))
-    # Reply-to-photo-message → admin is overriding the captions
+    # Catch any text message from the authorised chat. _handle_caption_reply
+    # itself decides what to do — prompt input after a button click, caption
+    # input after a button click, or a legacy reply-to-photo override. We
+    # deliberately don't require `filters.REPLY` here: when the bot asks
+    # "Reply with your prompt…", many admins just type a normal message
+    # instead of long-pressing → Reply on mobile, and we want both to work.
     application.add_handler(MessageHandler(
-        filters.REPLY & filters.TEXT & ~filters.COMMAND,
+        filters.TEXT & ~filters.COMMAND,
         _handle_caption_reply,
     ))
     _application = application
@@ -568,7 +573,25 @@ async def _run_regeneration_pipeline(
     # Send fresh message (not edit, not reply) so admin gets a clean push
     message_id = await _send_approval_request(new_approval_id, "default")
     if message_id is None:
+        # Photo send failed (oversize, Telegram fetch quirk, network…). Don't
+        # leave the admin staring at "🔄 Regenerating…" forever — surface the
+        # new approval as plain text + link so they can still review it in
+        # the web UI.
         logger.error("New approval %s created but Telegram send failed", new_approval_id)
+        admin_base = os.environ.get("ADMIN_BASE_URL", "").rstrip("/")
+        link = (
+            f"{admin_base}/admin/approvals" if admin_base else
+            "in the admin panel → Approvals"
+        )
+        await _with_retry(lambda: _application.bot.send_message(
+            chat_id=_TELEGRAM_CHAT_ID,
+            text=(
+                f"⚠️ *Regeneration finished but photo couldn't be sent to Telegram.*\n\n"
+                f"New approval *#{new_approval_id}* was created — review it {link}."
+            ),
+            parse_mode=ParseMode.MARKDOWN,
+            disable_web_page_preview=True,
+        ))
 
 
 def _blocking_regenerate(old_approval_id: int, extra_prompt: str = "") -> Optional[int]:
@@ -591,6 +614,7 @@ def _blocking_regenerate(old_approval_id: int, extra_prompt: str = "") -> Option
         new_regen_count = old.regeneration_count + 1
         bag_queue_id = bag.id
         bag_image_path = bag.image_path
+        bag_image_open_path = bag.image_path_open
         custom_prompt = bag.custom_prompt or ""
         if extra_prompt:
             custom_prompt = (custom_prompt + "\n" + extra_prompt).strip() if custom_prompt else extra_prompt
@@ -608,6 +632,7 @@ def _blocking_regenerate(old_approval_id: int, extra_prompt: str = "") -> Option
         reference_image_url=pin_result["image_url"],
         custom_prompt=custom_prompt,
         tenant_id=tenant_id,
+        bag_image_open_url=bag_image_open_path,
     )
     if not gen["success"]:
         raise RuntimeError(f"kie.ai: {gen['error']}")
