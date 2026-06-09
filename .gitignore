@@ -117,3 +117,9 @@ media/
 
 # Railway
 .railway/
+
+
+# Local debug artifacts — never commit (may contain tokens from log lines)
+railway-*.yml
+.playwright-mcp/
+
