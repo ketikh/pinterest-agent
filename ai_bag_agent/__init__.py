@@ -82,16 +82,18 @@ def create_app(config_override: Optional[Dict] = None) -> Flask:
         except Exception as exc:
             info["schema_error"] = str(exc)
 
-        # Tail of the migrate log written by railway.toml startCommand
-        log_path = Path("/tmp/migrate.log")
-        if log_path.exists():
-            try:
-                lines = log_path.read_text(errors="replace").splitlines()
-                info["migrate_log_tail"] = lines[-40:]
-            except Exception as exc:
-                info["migrate_log_error"] = str(exc)
-        else:
-            info["migrate_log"] = "not-found"
+        # Tail of the stamp + migrate logs written by railway.toml startCommand
+        for log_name in ("stamp.log", "migrate.log"):
+            log_path = Path(f"/tmp/{log_name}")
+            key = log_name.replace(".log", "_log_tail")
+            if log_path.exists():
+                try:
+                    lines = log_path.read_text(errors="replace").splitlines()
+                    info[key] = lines[-40:]
+                except Exception as exc:
+                    info[key + "_error"] = str(exc)
+            else:
+                info[key] = "not-found"
 
         return _json.dumps(info, indent=2, ensure_ascii=False), 200, {
             "Content-Type": "application/json; charset=utf-8",

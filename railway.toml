@@ -6,7 +6,12 @@ builder = "nixpacks"
 # (missing DB plugin, bad URL, …) doesn't prevent gunicorn from starting —
 # /health stays reachable even when DB is broken, which is the whole point
 # of a healthcheck path that doesn't touch the database.
-startCommand = "flask --app wsgi db upgrade 2>&1 | tee /tmp/migrate.log ; gunicorn wsgi:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120"
+# One-off alembic stamp recovery runs first — idempotent no-op once the
+# alembic_version table exists. Needed because the Postgres DB on Railway
+# was originally created via db.create_all() (no alembic tracking), which
+# meant every `db upgrade` tried to re-create existing tables and never
+# applied later column-adding migrations.
+startCommand = "python scripts/stamp_alembic_if_needed.py 2>&1 | tee /tmp/stamp.log ; flask --app wsgi db upgrade 2>&1 | tee /tmp/migrate.log ; gunicorn wsgi:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120"
 healthcheckPath = "/health"
 healthcheckTimeout = 120
 restartPolicyType = "on_failure"
