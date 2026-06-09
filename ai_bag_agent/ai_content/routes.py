@@ -96,6 +96,7 @@ def queue_upload():
     custom_prompt = request.form.get("custom_prompt", "").strip() or None
     reference_url = request.form.get("reference_url", "").strip() or None
     file = request.files.get("bag_image")
+    file_open = request.files.get("bag_image_open")
 
     if not bag_name:
         flash("ჩანთის სახელი სავალდებულოა.", "danger")
@@ -109,6 +110,10 @@ def queue_upload():
         flash("მხოლოდ JPG, PNG ან WebP ფორმატია დაშვებული.", "danger")
         return redirect(url_for("ai_content.queue"))
 
+    if file_open and file_open.filename and not _allowed_file(file_open.filename):
+        flash("გახსნილი ფოტოც მხოლოდ JPG, PNG ან WebP ფორმატში.", "danger")
+        return redirect(url_for("ai_content.queue"))
+
     from .services.cloudinary_svc import upload_image
     suffix = pathlib.Path(secure_filename(file.filename)).suffix
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
@@ -120,12 +125,31 @@ def queue_upload():
         flash(f"Cloudinary ატვირთვა ვერ მოხდა: {result['error']}", "danger")
         return redirect(url_for("ai_content.queue"))
 
+    # Optional second photo (opened bag). Uploaded the same way; failure here
+    # is non-fatal — the closed photo still works on its own.
+    image_path_open = None
+    if file_open and file_open.filename:
+        suffix2 = pathlib.Path(secure_filename(file_open.filename)).suffix
+        with tempfile.NamedTemporaryFile(suffix=suffix2, delete=False) as tmp2:
+            file_open.save(tmp2.name)
+            result_open = upload_image(tmp2.name, tenant_id="default", category="bags")
+        os.unlink(tmp2.name)
+        if result_open["success"]:
+            image_path_open = result_open["public_url"]
+        else:
+            flash(
+                f"⚠️ გახსნილი ფოტო Cloudinary-ზე ვერ ავიდა: {result_open['error']}. "
+                "გენერაცია გრძელდება მხოლოდ დახურული ფოტოთი.",
+                "warning",
+            )
+
     last = BagQueue.query.order_by(BagQueue.sort_order.desc()).first()
     next_order = (last.sort_order + 1) if last else 1
 
     bag = BagQueue(
         bag_name=bag_name,
         image_path=result["public_url"],
+        image_path_open=image_path_open,
         custom_prompt=custom_prompt,
         reference_url=reference_url,
         sort_order=next_order,

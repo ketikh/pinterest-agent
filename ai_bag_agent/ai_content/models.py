@@ -51,6 +51,9 @@ class BagQueue(db.Model):
     tenant_id: str = db.Column(db.String(64), nullable=False, default=DEFAULT_TENANT, index=True)
     bag_name: str = db.Column(db.String(256), nullable=False)
     image_path: str = db.Column(db.String(512), nullable=False)  # Cloudinary URL after upload
+    # Optional second photo of the SAME bag, opened up (helps kie.ai understand
+    # the interior/proportions without changing the primary closed silhouette).
+    image_path_open: Optional[str] = db.Column(db.String(512), nullable=True)
     custom_prompt: Optional[str] = db.Column(db.Text, nullable=True)
     reference_url: Optional[str] = db.Column(db.String(1024), nullable=True)  # manual Pinterest URL
     status: str = db.Column(

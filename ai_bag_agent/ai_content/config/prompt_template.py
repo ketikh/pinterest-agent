@@ -78,9 +78,26 @@ GLOBAL_STYLE_SUFFIX = (
 )
 
 
-def build_prompt(custom_prompt: str = "") -> str:
-    """Combine global template with optional per-bag custom prompt."""
+OPEN_BAG_REFERENCE_NOTE = """\
+ADDITIONAL CONTEXT — THIRD IMAGE (OPEN VIEW):
+The third input image shows the SAME bag photographed open. Use it ONLY as
+a shape/interior reference so you understand the bag's true depth, lining,
+and proportions. DO NOT include the open view in the output — the output
+must show the bag in the EXACT closed/posed state of the PRIMARY (first)
+image. The open photo is for your understanding only, never for rendering.
+"""
+
+
+def build_prompt(custom_prompt: str = "", has_open_bag: bool = False) -> str:
+    """Combine global template with optional per-bag custom prompt.
+
+    When `has_open_bag` is True we append a note explaining the third image
+    so kie.ai treats it as reference-only and doesn't try to merge an open
+    bag into the final shot.
+    """
     parts = [GLOBAL_SYSTEM_PROMPT.strip()]
+    if has_open_bag:
+        parts.append(f"\n{OPEN_BAG_REFERENCE_NOTE.strip()}")
     if custom_prompt and custom_prompt.strip():
         parts.append(f"\nADDITIONAL INSTRUCTIONS:\n{custom_prompt.strip()}")
     parts.append(f"\n{GLOBAL_STYLE_SUFFIX}")

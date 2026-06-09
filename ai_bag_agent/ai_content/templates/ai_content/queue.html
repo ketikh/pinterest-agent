@@ -48,11 +48,19 @@
           <td>
             <img src="{{ bag.image_path }}" alt="{{ bag.bag_name }}"
                  style="width:52px;height:52px;object-fit:cover;border-radius:8px;">
+            {% if bag.image_path_open %}
+              <img src="{{ bag.image_path_open }}" alt="open"
+                   title="გახსნილი ჩანთა — kie.ai-ის რეფერენსად"
+                   style="width:36px;height:36px;object-fit:cover;border-radius:6px;margin-left:4px;opacity:.85;border:1px dashed #aaa;">
+            {% endif %}
           </td>
           <td>
             <div class="fw-medium">{{ bag.bag_name }}</div>
             {% if bag.custom_prompt %}
               <small class="text-muted">{{ bag.custom_prompt[:60] }}{% if bag.custom_prompt|length > 60 %}…{% endif %}</small>
+            {% endif %}
+            {% if bag.image_path_open %}
+              <div><small class="text-muted">📂 open view attached</small></div>
             {% endif %}
           </td>
           <td>
@@ -138,10 +146,22 @@
             </div>
 
             <div class="col-12">
-              <label class="form-label fw-medium">Bag Photo <span class="text-danger">*</span></label>
+              <label class="form-label fw-medium">Bag Photo (დახურული) <span class="text-danger">*</span></label>
               <input type="file" name="bag_image" class="form-control"
                      accept=".jpg,.jpeg,.png,.webp" required>
               <div class="form-text">JPG, PNG ან WebP — Cloudinary-ზე ავტომატურად ატვირთდება.</div>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label fw-medium">Bag Photo — გახსნილი
+                <span class="text-muted fw-normal">(სურვილისამებრ)</span>
+              </label>
+              <input type="file" name="bag_image_open" class="form-control"
+                     accept=".jpg,.jpeg,.png,.webp">
+              <div class="form-text">
+                ცალკე ფოტო ჩანთის გახსნილ მდგომარეობაში — kie.ai-ს ეხმარება გაიგოს
+                ჩანთის შიდა მხარე და ფორმა. დახურულ ფოტოს არ ცვლის — მხოლოდ რეფერენსად იყენებს.
+              </div>
             </div>
 
             <div class="col-12">

@@ -145,6 +145,7 @@ def _run_pipeline_for_bag(bag: BagQueue) -> dict:
         reference_image_url=reference_url,
         custom_prompt=bag.custom_prompt or "",
         tenant_id=tenant_id,
+        bag_image_open_url=bag.image_path_open,
     )
     if not gen["success"]:
         return _fail(bag, f"kie.ai: {gen['error']}")

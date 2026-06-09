@@ -73,6 +73,7 @@ def generate_image(
     custom_prompt: str = "",
     tenant_id: str = "default",
     include_bag_input: bool = True,
+    bag_image_open_url: Optional[str] = None,
 ) -> dict:
     """Generate a promotional bag photo using kie.ai Nano Banana Pro.
 
@@ -82,6 +83,10 @@ def generate_image(
         reference_image_url: Public URL of the Pinterest reference photo.
         custom_prompt: Optional per-bag prompt additions.
         tenant_id: Tenant identifier for storage organisation.
+        bag_image_open_url: Optional URL of the SAME bag photographed open —
+                            used purely as a reference so kie.ai understands
+                            interior shape/proportions. The closed bag remains
+                            the primary subject.
 
     Returns:
         dict with keys: success, generated_url, local_path,
@@ -113,7 +118,18 @@ def generate_image(
     bag_url = _pad_to_square_cloudinary(bag_url)
     reference_image_url = _pad_to_square_cloudinary(reference_image_url)
 
-    prompt = build_prompt(custom_prompt)
+    bag_open_url: Optional[str] = None
+    if bag_image_open_url:
+        resolved_open = _resolve_image_url(bag_image_open_url)
+        if resolved_open is not None:
+            bag_open_url = _pad_to_square_cloudinary(resolved_open)
+        else:
+            logger.warning(
+                "bag_image_open_url is not a public URL (%s) — ignoring",
+                bag_image_open_url,
+            )
+
+    prompt = build_prompt(custom_prompt, has_open_bag=bool(bag_open_url))
     t_start = time.monotonic()
 
     # Step 1 — submit task (with retries for server overload)
@@ -127,6 +143,7 @@ def generate_image(
         reference_url=reference_image_url,
         prompt=prompt,
         max_retries=max_retries,
+        bag_open_url=bag_open_url,
     )
     if task_id is None:
         return GenerationResult(
@@ -214,14 +231,23 @@ def _submit_task(
     reference_url: str,
     prompt: str,
     max_retries: int = 3,
+    bag_open_url: Optional[str] = None,
 ) -> Optional[str]:
     """Submit a generation task. Returns taskId or None on failure.
 
-    Note: image_input ORDER — bag goes FIRST (PRIMARY subject), reference
-    goes second (scene/lighting guide). This matches the prompt template
-    which calls the first image "PRIMARY" and the second "REFERENCE".
+    Note: image_input ORDER —
+      [0] PRIMARY = the closed bag (the subject being sold)
+      [1] REFERENCE = Pinterest scene/lighting guide
+      [2] OPEN VIEW (optional) = the same bag, opened — interior reference only
+
+    The prompt template addresses each slot by ordinal, so don't reorder.
     """
-    image_input = [bag_url, reference_url] if bag_url else [reference_url]
+    if bag_url:
+        image_input = [bag_url, reference_url]
+        if bag_open_url:
+            image_input.append(bag_open_url)
+    else:
+        image_input = [reference_url]
     payload = {
         "model": model,
         "input": {
