@@ -45,6 +45,58 @@ def create_app(config_override: Optional[Dict] = None) -> Flask:
     def health():
         return {"status": "ok", "service": "pinterest-agent"}
 
+    @app.route("/health/db")
+    def health_db():
+        """Surface DB schema state so we can confirm migrations applied.
+
+        No auth: returns table column names + alembic revision + tail of
+        the deploy migration log. Safe — exposes no secrets, just schema.
+        """
+        import json as _json
+        from pathlib import Path
+        from sqlalchemy import inspect, text
+
+        info: dict = {"service": "pinterest-agent"}
+        try:
+            url = app.config.get("SQLALCHEMY_DATABASE_URI", "")
+            info["db_driver"] = url.split(":", 1)[0] if url else "?"
+        except Exception as exc:
+            info["db_driver_error"] = str(exc)
+
+        try:
+            with app.app_context():
+                insp = inspect(db.engine)
+                info["tables"] = sorted(insp.get_table_names())
+                for tbl in ("bag_queue", "pending_approvals"):
+                    if tbl in info["tables"]:
+                        info[f"{tbl}_columns"] = [c["name"] for c in insp.get_columns(tbl)]
+                # Alembic current head
+                try:
+                    with db.engine.connect() as conn:
+                        rev = conn.execute(text(
+                            "SELECT version_num FROM alembic_version"
+                        )).scalar()
+                    info["alembic_version"] = rev
+                except Exception as exc:
+                    info["alembic_version_error"] = str(exc)
+        except Exception as exc:
+            info["schema_error"] = str(exc)
+
+        # Tail of the migrate log written by railway.toml startCommand
+        log_path = Path("/tmp/migrate.log")
+        if log_path.exists():
+            try:
+                lines = log_path.read_text(errors="replace").splitlines()
+                info["migrate_log_tail"] = lines[-40:]
+            except Exception as exc:
+                info["migrate_log_error"] = str(exc)
+        else:
+            info["migrate_log"] = "not-found"
+
+        return _json.dumps(info, indent=2, ensure_ascii=False), 200, {
+            "Content-Type": "application/json; charset=utf-8",
+        }
+
     # Jinja filter: render UTC datetimes in the configured local timezone
     _register_time_filters(app)
 
