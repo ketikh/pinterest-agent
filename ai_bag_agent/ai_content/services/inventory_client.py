@@ -91,6 +91,25 @@ def list_products(in_stock_only: bool = True) -> list:
 
     if in_stock_only:
         data = [p for p in data if p.get("in_stock") is True]
+
+    # Only keep products whose name starts with one of these prefixes.
+    # The storefront mixes laptop bags with non-bag items (necklaces, aprons,
+    # child bags…) and we don't want AI-generated photos for those. Default
+    # to "Tissu" — every laptop-bag SKU is named "Tissu Large/with strap/…".
+    # Override via env: INVENTORY_NAME_PREFIXES="Tissu,LaptopBag"
+    # Set to "*" to disable the filter (keep all products).
+    raw = os.environ.get("INVENTORY_NAME_PREFIXES", "Tissu")
+    if raw.strip() == "*":
+        return data
+    prefixes = tuple(p.strip() for p in raw.split(",") if p.strip())
+    if prefixes:
+        before = len(data)
+        data = [p for p in data if (p.get("name") or "").strip().startswith(prefixes)]
+        if before != len(data):
+            logger.info(
+                "Inventory filter: kept %d/%d products matching prefixes %s",
+                len(data), before, prefixes,
+            )
     return data
 
 
