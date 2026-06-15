@@ -83,9 +83,9 @@ def create_app(config_override: Optional[Dict] = None) -> Flask:
             info["schema_error"] = str(exc)
 
         # Tail of the stamp + migrate logs written by railway.toml startCommand
-        for log_name in ("stamp.log", "migrate.log"):
+        for log_name in ("stamp.log", "migrate.log", "pipeline-errors.log"):
             log_path = Path(f"/tmp/{log_name}")
-            key = log_name.replace(".log", "_log_tail")
+            key = log_name.replace(".log", "_log_tail").replace("-", "_")
             if log_path.exists():
                 try:
                     lines = log_path.read_text(errors="replace").splitlines()

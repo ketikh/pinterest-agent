@@ -126,7 +126,31 @@ def trigger_for_bag(bag_id: int, tenant_id: str = "default") -> dict:
 
 
 def _run_pipeline_for_bag(bag: BagQueue) -> dict:
-    """Internal: runs Pinterest → kie.ai → Cloudinary → PendingApproval → Telegram."""
+    """Internal: runs Pinterest → kie.ai → Cloudinary → PendingApproval → Telegram.
+
+    Wrapped end-to-end in try/except so an unexpected exception (DB error,
+    missing column, code bug…) is caught, persisted to bag.status='failed'
+    and written to /tmp/pipeline-errors.log so /health/db can surface it.
+    Without this, an uncaught exception in the background thread leaves the
+    bag stuck in 'processing' indefinitely with zero diagnostic.
+    """
+    try:
+        return _run_pipeline_for_bag_inner(bag)
+    except Exception as exc:
+        import traceback
+        tb = traceback.format_exc()
+        logger.exception("Pipeline crashed for bag %s", bag.id)
+        try:
+            from pathlib import Path
+            Path("/tmp/pipeline-errors.log").write_text(
+                f"bag_id={bag.id} bag_name={bag.bag_name!r}\n{tb}\n",
+            )
+        except Exception:
+            pass
+        return _fail(bag, f"unhandled exception: {exc}")
+
+
+def _run_pipeline_for_bag_inner(bag: BagQueue) -> dict:
     bag_id = bag.id
     tenant_id = bag.tenant_id
     bag.status = "processing"
