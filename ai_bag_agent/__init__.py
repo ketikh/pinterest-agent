@@ -82,6 +82,14 @@ def create_app(config_override: Optional[Dict] = None) -> Flask:
         except Exception as exc:
             info["schema_error"] = str(exc)
 
+        # In-memory ring buffer of pipeline trace events (doesn't depend
+        # on /tmp filesystem semantics).
+        try:
+            from .ai_content.services.orchestrator import get_recent_trace
+            info["recent_trace"] = get_recent_trace()
+        except Exception as exc:
+            info["recent_trace_error"] = str(exc)
+
         # Tail of the stamp + migrate logs written by railway.toml startCommand
         for log_name in ("stamp.log", "migrate.log", "pipeline-errors.log", "pipeline.log"):
             log_path = Path(f"/tmp/{log_name}")

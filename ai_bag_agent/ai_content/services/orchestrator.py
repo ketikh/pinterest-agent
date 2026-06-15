@@ -125,18 +125,39 @@ def trigger_for_bag(bag_id: int, tenant_id: str = "default") -> dict:
     return _run_pipeline_for_bag(bag)
 
 
+# In-memory ring buffer of recent pipeline trace lines. Shared across all
+# threads of the gunicorn worker, surfaced by /health/db. Doesn't rely on
+# /tmp filesystem behaviour or Railway log access.
+import collections as _collections  # noqa: E402
+_TRACE_RING: _collections.deque = _collections.deque(maxlen=200)
+
+
 def _trace_step(bag_id: int, step: str) -> None:
-    """Append a timestamped step to /tmp/pipeline.log so /health/db surfaces
-    where each pipeline got to — even when the background thread is killed
-    silently mid-flight by a worker restart and no Python exception fires."""
+    """Emit a pipeline checkpoint everywhere it can possibly be observed:
+    1. logger.warning  → Railway's captured stderr (greppable post-mortem)
+    2. in-memory ring  → /health/db.recent_trace (no fs dependency)
+    3. /tmp/pipeline.log → legacy file tail (best-effort)
+    """
+    from datetime import datetime as _dt, timezone as _tz
+    ts = _dt.now(_tz.utc).strftime("%H:%M:%S")
+    line = f"{ts} bag={bag_id} {step}"
+
+    logger.warning("PIPELINE-TRACE %s", line)
     try:
-        from pathlib import Path
-        from datetime import datetime as _dt, timezone as _tz
-        ts = _dt.now(_tz.utc).strftime("%H:%M:%S")
-        with Path("/tmp/pipeline.log").open("a") as f:
-            f.write(f"{ts} bag={bag_id} {step}\n")
+        _TRACE_RING.append(line)
     except Exception:
         pass
+    try:
+        from pathlib import Path
+        with Path("/tmp/pipeline.log").open("a") as f:
+            f.write(line + "\n")
+    except Exception as exc:
+        logger.warning("PIPELINE-TRACE file write failed: %s", exc)
+
+
+def get_recent_trace() -> list:
+    """Return the in-memory ring buffer — exposed by /health/db."""
+    return list(_TRACE_RING)
 
 
 def _run_pipeline_for_bag(bag: BagQueue) -> dict:
