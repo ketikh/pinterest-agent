@@ -92,23 +92,47 @@ def list_products(in_stock_only: bool = True) -> list:
     if in_stock_only:
         data = [p for p in data if p.get("in_stock") is True]
 
-    # Only keep products whose name starts with one of these prefixes.
-    # The storefront mixes laptop bags with non-bag items (necklaces, aprons,
-    # child bags…) and we don't want AI-generated photos for those. Default
-    # to "Tissu" — every laptop-bag SKU is named "Tissu Large/with strap/…".
-    # Override via env: INVENTORY_NAME_PREFIXES="Tissu,LaptopBag"
-    # Set to "*" to disable the filter (keep all products).
-    raw = os.environ.get("INVENTORY_NAME_PREFIXES", "Tissu")
-    if raw.strip() == "*":
+    # Filter out known non-laptop-bag products. The storefront mixes bags
+    # with necklaces (ყელსაბამი), aprons (წინსაფარი) and child bags
+    # (ბავშვის ჩანთა) — we only want laptop bags. Earlier we used an
+    # INVENTORY_NAME_PREFIXES include-list defaulting to "Tissu", but the
+    # storefront then renamed every bag SKU to a colour/flower name
+    # (Olive, Lemon, Lagoon…) which broke that filter silently for days.
+    # Excluding the small fixed non-bag set is more robust to renames.
+    # Env overrides:
+    #   INVENTORY_NAME_EXCLUDES  — comma-separated substrings to exclude
+    #                              (default below covers the known non-bags)
+    #   INVENTORY_NAME_PREFIXES  — optional include-list (legacy); when set,
+    #                              behaves the same as before. Set to "*"
+    #                              or leave unset to use the exclude filter.
+    include_raw = os.environ.get("INVENTORY_NAME_PREFIXES", "*").strip()
+    if include_raw and include_raw != "*":
+        prefixes = tuple(p.strip() for p in include_raw.split(",") if p.strip())
+        if prefixes:
+            before = len(data)
+            data = [p for p in data if (p.get("name") or "").strip().startswith(prefixes)]
+            if before != len(data):
+                logger.info(
+                    "Inventory include-filter: kept %d/%d matching prefixes %s",
+                    len(data), before, prefixes,
+                )
         return data
-    prefixes = tuple(p.strip() for p in raw.split(",") if p.strip())
-    if prefixes:
+
+    exclude_raw = os.environ.get(
+        "INVENTORY_NAME_EXCLUDES",
+        "ყელსაბამი,წინსაფარი,ბავშვის",
+    )
+    excludes = tuple(e.strip() for e in exclude_raw.split(",") if e.strip())
+    if excludes:
         before = len(data)
-        data = [p for p in data if (p.get("name") or "").strip().startswith(prefixes)]
+        data = [
+            p for p in data
+            if not any(ex in (p.get("name") or "") for ex in excludes)
+        ]
         if before != len(data):
             logger.info(
-                "Inventory filter: kept %d/%d products matching prefixes %s",
-                len(data), before, prefixes,
+                "Inventory exclude-filter: kept %d/%d, dropped names containing %s",
+                len(data), before, excludes,
             )
     return data
 
