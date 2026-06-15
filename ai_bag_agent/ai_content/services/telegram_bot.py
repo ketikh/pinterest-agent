@@ -605,69 +605,86 @@ def _blocking_regenerate(old_approval_id: int, extra_prompt: str = "") -> Option
     from .pinterest_client import get_random_pin
     from .ai_generator import generate_image
     from .cloudinary_svc import upload_generated_image
+    from .orchestrator import _trace_step
 
-    with _flask_app.app_context():
-        old = db.session.get(PendingApproval, old_approval_id)
-        if old is None or old.bag is None:
-            return None
-        bag = old.bag
-        new_regen_count = old.regeneration_count + 1
-        bag_queue_id = bag.id
-        # Pick the OPPOSITE side to whatever the old approval used. That keeps
-        # regen producing genuinely different photos instead of two tries of
-        # the same angle.
-        old_side = "front"
-        if (old.prompt_used or "").startswith("side=back"):
-            old_side = "back"
-        if bag.image_path_open:
-            new_side = "front" if old_side == "back" else "back"
-        else:
-            new_side = "front"
-        primary_url = bag.image_path_open if new_side == "back" else bag.image_path
-        chosen_side = new_side
-        custom_prompt = bag.custom_prompt or ""
-        if extra_prompt:
-            custom_prompt = (custom_prompt + "\n" + extra_prompt).strip() if custom_prompt else extra_prompt
-        tenant_id = bag.tenant_id
+    _trace_step(old_approval_id, f"REGEN start (old approval #{old_approval_id})")
+    try:
+        with _flask_app.app_context():
+            old = db.session.get(PendingApproval, old_approval_id)
+            if old is None or old.bag is None:
+                _trace_step(old_approval_id, "REGEN abort — approval or bag not found")
+                return None
+            bag = old.bag
+            new_regen_count = old.regeneration_count + 1
+            bag_queue_id = bag.id
+            old_side = "front"
+            if (old.prompt_used or "").startswith("side=back"):
+                old_side = "back"
+            if bag.image_path_open:
+                new_side = "front" if old_side == "back" else "back"
+            else:
+                new_side = "front"
+            primary_url = bag.image_path_open if new_side == "back" else bag.image_path
+            chosen_side = new_side
+            custom_prompt = bag.custom_prompt or ""
+            if extra_prompt:
+                custom_prompt = (custom_prompt + "\n" + extra_prompt).strip() if custom_prompt else extra_prompt
+            tenant_id = bag.tenant_id
+            _trace_step(old_approval_id, f"REGEN bag #{bag_queue_id}, side={chosen_side}, regen->{new_regen_count}")
 
-    pin_result = get_random_pin(
-        board_url=os.environ.get("PINTEREST_BOARD_URL", ""),
-        tenant_id=tenant_id,
-    )
-    if not pin_result["success"]:
-        raise RuntimeError(f"Pinterest: {pin_result['error']}")
-
-    gen = generate_image(
-        bag_image_path=primary_url,
-        reference_image_url=pin_result["image_url"],
-        custom_prompt=custom_prompt,
-        tenant_id=tenant_id,
-    )
-    if not gen["success"]:
-        raise RuntimeError(f"kie.ai: {gen['error']}")
-
-    final_url = gen["generated_url"]
-    if gen.get("local_path"):
-        up = upload_generated_image(gen, tenant_id=tenant_id)
-        if up.get("success"):
-            final_url = up["public_url"]
-
-    side_tag = f"side={chosen_side}"
-    prompt_used = f"{side_tag}\n{gen.get('prompt_used', '')}".strip()
-    with _flask_app.app_context():
-        new_row = PendingApproval(
+        _trace_step(old_approval_id, "REGEN calling Pinterest get_random_pin")
+        pin_result = get_random_pin(
+            board_url=os.environ.get("PINTEREST_BOARD_URL", ""),
             tenant_id=tenant_id,
-            bag_queue_id=bag_queue_id,
-            reference_pin_id=pin_result.get("pin_id"),
-            reference_url=pin_result["image_url"],
-            generated_image_url=final_url,
-            prompt_used=prompt_used,
-            regeneration_count=new_regen_count,
-            status="pending",
         )
-        db.session.add(new_row)
-        db.session.commit()
-        return new_row.id
+        if not pin_result["success"]:
+            _trace_step(old_approval_id, f"REGEN Pinterest FAIL: {pin_result['error']}")
+            raise RuntimeError(f"Pinterest: {pin_result['error']}")
+        _trace_step(old_approval_id, f"REGEN Pinterest OK pin={pin_result.get('pin_id')}")
+
+        _trace_step(old_approval_id, "REGEN calling kie.ai")
+        gen = generate_image(
+            bag_image_path=primary_url,
+            reference_image_url=pin_result["image_url"],
+            custom_prompt=custom_prompt,
+            tenant_id=tenant_id,
+        )
+        _trace_step(old_approval_id, f"REGEN kie.ai returned success={gen['success']}")
+        if not gen["success"]:
+            raise RuntimeError(f"kie.ai: {gen['error']}")
+
+        final_url = gen["generated_url"]
+        if gen.get("local_path"):
+            _trace_step(old_approval_id, "REGEN calling Cloudinary")
+            up = upload_generated_image(gen, tenant_id=tenant_id)
+            if up.get("success"):
+                final_url = up["public_url"]
+                _trace_step(old_approval_id, "REGEN Cloudinary OK")
+            else:
+                _trace_step(old_approval_id, f"REGEN Cloudinary fail: {up.get('error')}")
+
+        side_tag = f"side={chosen_side}"
+        prompt_used = f"{side_tag}\n{gen.get('prompt_used', '')}".strip()
+        with _flask_app.app_context():
+            new_row = PendingApproval(
+                tenant_id=tenant_id,
+                bag_queue_id=bag_queue_id,
+                reference_pin_id=pin_result.get("pin_id"),
+                reference_url=pin_result["image_url"],
+                generated_image_url=final_url,
+                prompt_used=prompt_used,
+                regeneration_count=new_regen_count,
+                status="pending",
+            )
+            db.session.add(new_row)
+            db.session.commit()
+            new_id = new_row.id
+        _trace_step(old_approval_id, f"REGEN DONE → new approval #{new_id}")
+        return new_id
+    except Exception as exc:
+        _trace_step(old_approval_id, f"REGEN EXCEPTION {type(exc).__name__}: {exc}")
+        logger.exception("Regen pipeline crashed for approval %s", old_approval_id)
+        raise
 
 
 async def _restore_keyboard_with_error(
