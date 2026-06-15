@@ -125,26 +125,42 @@ def trigger_for_bag(bag_id: int, tenant_id: str = "default") -> dict:
     return _run_pipeline_for_bag(bag)
 
 
+def _trace_step(bag_id: int, step: str) -> None:
+    """Append a timestamped step to /tmp/pipeline.log so /health/db surfaces
+    where each pipeline got to — even when the background thread is killed
+    silently mid-flight by a worker restart and no Python exception fires."""
+    try:
+        from pathlib import Path
+        from datetime import datetime as _dt, timezone as _tz
+        ts = _dt.now(_tz.utc).strftime("%H:%M:%S")
+        with Path("/tmp/pipeline.log").open("a") as f:
+            f.write(f"{ts} bag={bag_id} {step}\n")
+    except Exception:
+        pass
+
+
 def _run_pipeline_for_bag(bag: BagQueue) -> dict:
     """Internal: runs Pinterest → kie.ai → Cloudinary → PendingApproval → Telegram.
 
     Wrapped end-to-end in try/except so an unexpected exception (DB error,
     missing column, code bug…) is caught, persisted to bag.status='failed'
     and written to /tmp/pipeline-errors.log so /health/db can surface it.
-    Without this, an uncaught exception in the background thread leaves the
-    bag stuck in 'processing' indefinitely with zero diagnostic.
     """
+    bag_id = bag.id
+    _trace_step(bag_id, "ENTER _run_pipeline_for_bag")
     try:
-        return _run_pipeline_for_bag_inner(bag)
+        result = _run_pipeline_for_bag_inner(bag)
+        _trace_step(bag_id, f"DONE result.success={result.get('success')}")
+        return result
     except Exception as exc:
         import traceback
         tb = traceback.format_exc()
-        logger.exception("Pipeline crashed for bag %s", bag.id)
+        logger.exception("Pipeline crashed for bag %s", bag_id)
+        _trace_step(bag_id, f"EXCEPTION {type(exc).__name__}: {exc}")
         try:
             from pathlib import Path
-            Path("/tmp/pipeline-errors.log").write_text(
-                f"bag_id={bag.id} bag_name={bag.bag_name!r}\n{tb}\n",
-            )
+            with Path("/tmp/pipeline-errors.log").open("a") as f:
+                f.write(f"bag_id={bag_id} bag_name={bag.bag_name!r}\n{tb}\n---\n")
         except Exception:
             pass
         return _fail(bag, f"unhandled exception: {exc}")
@@ -155,47 +171,58 @@ def _run_pipeline_for_bag_inner(bag: BagQueue) -> dict:
     tenant_id = bag.tenant_id
     bag.status = "processing"
     db.session.commit()
+    _trace_step(bag_id, "status=processing committed")
 
     # ---- 1. Reference image (manual override > Pinterest) ----------------
     if bag.reference_url:
         reference_url = bag.reference_url
         reference_pin_id = None
         logger.info("Bag %s: using manual reference_url", bag_id)
+        _trace_step(bag_id, "ref=manual")
     else:
         board_url = os.environ.get("PINTEREST_BOARD_URL", "")
+        _trace_step(bag_id, "calling Pinterest get_random_pin")
         pin = pinterest_client.get_random_pin(
             board_url=board_url,
             tenant_id=tenant_id,
             exclude_recent_days=0,
         )
         if not pin["success"]:
+            _trace_step(bag_id, f"Pinterest FAIL: {pin['error']}")
             return _fail(bag, f"Pinterest: {pin['error']}")
         reference_url = pin["image_url"]
         reference_pin_id = pin.get("pin_id")
+        _trace_step(bag_id, f"Pinterest OK pin_id={reference_pin_id}")
 
     # ---- 2. Pick front OR back (never both) and call kie.ai -----------------
     # Each generation uses ONE side of the bag — alternates based on how many
     # approvals already exist for the same bag_name. The model gets that side
     # + the Pinterest reference, never both front/back together.
     primary_url, chosen_side = _pick_primary_side(bag)
+    _trace_step(bag_id, f"chose side={chosen_side}")
+    _trace_step(bag_id, "calling kie.ai generate_image")
     gen = ai_generator.generate_image(
         bag_image_path=primary_url,
         reference_image_url=reference_url,
         custom_prompt=bag.custom_prompt or "",
         tenant_id=tenant_id,
     )
+    _trace_step(bag_id, f"kie.ai returned success={gen['success']}")
     if not gen["success"]:
         return _fail(bag, f"kie.ai: {gen['error']}")
 
     # ---- 3. Cloudinary upload (replace raw kie.ai URL with permanent one) ----
     final_url = gen["generated_url"]
     if gen.get("local_path"):
+        _trace_step(bag_id, "calling Cloudinary upload")
         up = cloudinary_svc.upload_generated_image(gen, tenant_id=tenant_id)
         if up.get("success"):
             final_url = up["public_url"]
+            _trace_step(bag_id, "Cloudinary OK")
         else:
             logger.warning("Cloudinary upload failed for bag %s — using raw kie.ai URL: %s",
                            bag_id, up.get("error"))
+            _trace_step(bag_id, f"Cloudinary FAIL: {up.get('error')}")
 
     # ---- 4. PendingApproval row -----------------------------------------
     # Captions are intentionally left empty — admin writes them via Telegram
@@ -223,6 +250,7 @@ def _run_pipeline_for_bag_inner(bag: BagQueue) -> dict:
     bag.processed_at = datetime.now(timezone.utc)
     db.session.commit()
     approval_id = approval.id
+    _trace_step(bag_id, f"approval #{approval_id} created, bag=done")
 
     # ---- 5. Telegram notification ---------------------------------------
     message_id = send_approval_request_sync(approval_id, tenant_id=tenant_id)
