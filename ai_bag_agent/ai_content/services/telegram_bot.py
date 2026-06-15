@@ -630,6 +630,10 @@ def _blocking_regenerate(old_approval_id: int, extra_prompt: str = "") -> Option
             if extra_prompt:
                 custom_prompt = (custom_prompt + "\n" + extra_prompt).strip() if custom_prompt else extra_prompt
             tenant_id = bag.tenant_id
+            # Snapshot the previous reference so we can fall back to it if
+            # Pinterest is briefly unreachable during this regen.
+            old_reference_url = old.reference_url
+            old_reference_pin_id = old.reference_pin_id
             _trace_step(old_approval_id, f"REGEN bag #{bag_queue_id}, side={chosen_side}, regen->{new_regen_count}")
 
         _trace_step(old_approval_id, "REGEN calling Pinterest get_random_pin")
@@ -638,8 +642,22 @@ def _blocking_regenerate(old_approval_id: int, extra_prompt: str = "") -> Option
             tenant_id=tenant_id,
         )
         if not pin_result["success"]:
-            _trace_step(old_approval_id, f"REGEN Pinterest FAIL: {pin_result['error']}")
-            raise RuntimeError(f"Pinterest: {pin_result['error']}")
+            _trace_step(old_approval_id, f"REGEN Pinterest fail: {pin_result['error']}")
+            if old_reference_url:
+                # Reuse the parent approval's reference photo when Pinterest
+                # is briefly unavailable. The OTHER input (front/back side of
+                # the bag) is being flipped on this run anyway, so output is
+                # still meaningfully different from the parent. Better than
+                # erroring out and forcing the admin to retry repeatedly.
+                _trace_step(old_approval_id, "REGEN fallback — reusing old reference_url")
+                pin_result = {
+                    "success": True,
+                    "image_url": old_reference_url,
+                    "pin_id": old_reference_pin_id,
+                    "error": None,
+                }
+            else:
+                raise RuntimeError(f"Pinterest: {pin_result['error']}")
         _trace_step(old_approval_id, f"REGEN Pinterest OK pin={pin_result.get('pin_id')}")
 
         _trace_step(old_approval_id, "REGEN calling kie.ai")
