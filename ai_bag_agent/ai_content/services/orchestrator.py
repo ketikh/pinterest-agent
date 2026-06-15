@@ -203,10 +203,12 @@ def _run_pipeline_for_bag_inner(bag: BagQueue) -> dict:
     else:
         board_url = os.environ.get("PINTEREST_BOARD_URL", "")
         _trace_step(bag_id, "calling Pinterest get_random_pin")
+        # Use the client's default exclude_recent_days (365) so we cycle
+        # through every pin on the board exactly once before any repeats.
+        # get_random_pin auto-resets the cache when the pool is exhausted.
         pin = pinterest_client.get_random_pin(
             board_url=board_url,
             tenant_id=tenant_id,
-            exclude_recent_days=0,
         )
         if not pin["success"]:
             _trace_step(bag_id, f"Pinterest FAIL: {pin['error']}")

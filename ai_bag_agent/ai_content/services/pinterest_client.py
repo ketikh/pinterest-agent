@@ -31,7 +31,11 @@ TOKEN_URL = "https://api.pinterest.com/v5/oauth/token"
 
 _IMAGE_SIZE_PREFERENCE = ["1200x", "originals", "736x", "564x", "236x"]
 
-RECENT_CACHE_DAYS = int(os.environ.get("RECENT_PIN_CACHE_DAYS", "7"))
+# Default to a very long window so every used pin stays excluded until we've
+# cycled through the entire board at least once. get_random_pin automatically
+# resets the cache when no fresh pins remain, so this large value just means
+# "never repeat until exhausted". Override via RECENT_PIN_CACHE_DAYS env.
+RECENT_CACHE_DAYS = int(os.environ.get("RECENT_PIN_CACHE_DAYS", "365"))
 
 # ---------------------------------------------------------------------------
 # Public: board discovery
