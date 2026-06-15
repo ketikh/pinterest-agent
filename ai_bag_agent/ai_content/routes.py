@@ -189,7 +189,33 @@ def queue_trigger(bag_id: int):
     # Pre-flight: confirm the bag exists and is in a trigger-able state so we
     # don't silently spawn a thread for a missing/done bag.
     bag = BagQueue.query.get_or_404(bag_id)
-    if bag.status not in ("pending", "failed"):
+    # Bags stuck in 'processing' for longer than this are treated as orphaned
+    # (worker restart, dead background thread) and reset to 'failed' so a
+    # fresh trigger can re-run them. kie.ai's longest poll budget is 300s, so
+    # 10 minutes is well past any legitimate in-flight pipeline.
+    stuck_threshold_min = 10
+    if bag.status == "processing":
+        from datetime import datetime, timezone, timedelta
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=stuck_threshold_min)
+        ref_time = bag.processed_at or bag.created_at
+        if ref_time and ref_time.tzinfo is None:
+            ref_time = ref_time.replace(tzinfo=timezone.utc)
+        if ref_time and ref_time < cutoff:
+            bag.status = "failed"
+            db.session.commit()
+            flash(
+                f"♻️ «{bag.bag_name}» იყო ჩარჩენილი processing-ში >{stuck_threshold_min}წ "
+                "— failed-ში გადავიყვანე და თავიდან ვუშვებ.",
+                "info",
+            )
+        else:
+            flash(
+                f"⏳ «{bag.bag_name}» ჯერ აქტიურად ცადება ({stuck_threshold_min}წ-ის ფანჯარაში). "
+                "დაელოდე ან ცადე ცოტა მერე.",
+                "warning",
+            )
+            return redirect(url_for("ai_content.queue"))
+    elif bag.status not in ("pending", "failed"):
         flash(f"⚠️ «{bag.bag_name}» status='{bag.status}' — only pending/failed bags can be triggered.",
               "warning")
         return redirect(url_for("ai_content.queue"))
