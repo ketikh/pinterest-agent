@@ -613,8 +613,18 @@ def _blocking_regenerate(old_approval_id: int, extra_prompt: str = "") -> Option
         bag = old.bag
         new_regen_count = old.regeneration_count + 1
         bag_queue_id = bag.id
-        bag_image_path = bag.image_path
-        bag_image_open_path = bag.image_path_open
+        # Pick the OPPOSITE side to whatever the old approval used. That keeps
+        # regen producing genuinely different photos instead of two tries of
+        # the same angle.
+        old_side = "front"
+        if (old.prompt_used or "").startswith("side=back"):
+            old_side = "back"
+        if bag.image_path_open:
+            new_side = "front" if old_side == "back" else "back"
+        else:
+            new_side = "front"
+        primary_url = bag.image_path_open if new_side == "back" else bag.image_path
+        chosen_side = new_side
         custom_prompt = bag.custom_prompt or ""
         if extra_prompt:
             custom_prompt = (custom_prompt + "\n" + extra_prompt).strip() if custom_prompt else extra_prompt
@@ -628,11 +638,10 @@ def _blocking_regenerate(old_approval_id: int, extra_prompt: str = "") -> Option
         raise RuntimeError(f"Pinterest: {pin_result['error']}")
 
     gen = generate_image(
-        bag_image_path=bag_image_path,
+        bag_image_path=primary_url,
         reference_image_url=pin_result["image_url"],
         custom_prompt=custom_prompt,
         tenant_id=tenant_id,
-        bag_image_open_url=bag_image_open_path,
     )
     if not gen["success"]:
         raise RuntimeError(f"kie.ai: {gen['error']}")
@@ -643,6 +652,8 @@ def _blocking_regenerate(old_approval_id: int, extra_prompt: str = "") -> Option
         if up.get("success"):
             final_url = up["public_url"]
 
+    side_tag = f"side={chosen_side}"
+    prompt_used = f"{side_tag}\n{gen.get('prompt_used', '')}".strip()
     with _flask_app.app_context():
         new_row = PendingApproval(
             tenant_id=tenant_id,
@@ -650,7 +661,7 @@ def _blocking_regenerate(old_approval_id: int, extra_prompt: str = "") -> Option
             reference_pin_id=pin_result.get("pin_id"),
             reference_url=pin_result["image_url"],
             generated_image_url=final_url,
-            prompt_used=gen.get("prompt_used", ""),
+            prompt_used=prompt_used,
             regeneration_count=new_regen_count,
             status="pending",
         )

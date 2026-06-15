@@ -83,18 +83,32 @@ def _pull_bag_from_inventory(tenant_id: str = "default") -> Optional[BagQueue]:
     if product is None:
         return None
 
+    # The /api/storefront/products endpoint exposes both image_front and
+    # image_back. We persist both so each generation can alternate between
+    # them (one side per generation, never both at once).
+    # `image_url` is a legacy fallback for the older /api/products payload.
+    front = product.get("image_front") or product.get("image_url")
+    back = product.get("image_back")
+    if not front:
+        logger.warning(
+            "Inventory product #%s «%s» has no image_front — skipping",
+            product.get("id"), product.get("name"),
+        )
+        return None
+
     bag = BagQueue(
         tenant_id=tenant_id,
         bag_name=product["name"],
-        image_path=product["image_url"],
+        image_path=front,
+        image_path_open=back,  # back-side photo of the same bag
         status="pending",
         sort_order=0,
     )
     db.session.add(bag)
     db.session.commit()
     logger.info(
-        "Pulled bag from inventory: storefront #%s «%s» → BagQueue #%s",
-        product.get("id"), product["name"], bag.id,
+        "Pulled bag from inventory: storefront #%s «%s» (back=%s) → BagQueue #%s",
+        product.get("id"), product["name"], bool(back), bag.id,
     )
     return bag
 
@@ -135,17 +149,16 @@ def _run_pipeline_for_bag(bag: BagQueue) -> dict:
         reference_url = pin["image_url"]
         reference_pin_id = pin.get("pin_id")
 
-    # ---- 2. kie.ai generation — both bag and reference, prompt-guarded ----
-    # The model gets BOTH images: the bag (subject) and the Pinterest reference
-    # (scene/lighting). Prompt is the strict "THE BAG IS SACRED" template
-    # plus the admin's per-bag notes — kie.ai composites realistically while
-    # being told (loudly) not to alter the bag.
+    # ---- 2. Pick front OR back (never both) and call kie.ai -----------------
+    # Each generation uses ONE side of the bag — alternates based on how many
+    # approvals already exist for the same bag_name. The model gets that side
+    # + the Pinterest reference, never both front/back together.
+    primary_url, chosen_side = _pick_primary_side(bag)
     gen = ai_generator.generate_image(
-        bag_image_path=bag.image_path,
+        bag_image_path=primary_url,
         reference_image_url=reference_url,
         custom_prompt=bag.custom_prompt or "",
         tenant_id=tenant_id,
-        bag_image_open_url=bag.image_path_open,
     )
     if not gen["success"]:
         return _fail(bag, f"kie.ai: {gen['error']}")
@@ -166,13 +179,18 @@ def _run_pipeline_for_bag(bag: BagQueue) -> dict:
     # falls back to the templated default if both fields are still empty at
     # post time. The caption_generator service is still available manually via
     # /admin/approvals/<id>/edit "Regenerate with AI" button.
+    # Tag the row with which side we used so _pick_primary_side can rotate
+    # correctly next time. Prepended to the model prompt so it stays visible
+    # in the admin diff and doesn't need a schema migration.
+    side_tag = f"side={chosen_side}"
+    prompt_used = f"{side_tag}\n{gen.get('prompt_used', '')}".strip()
     approval = PendingApproval(
         tenant_id=tenant_id,
         bag_queue_id=bag_id,
         reference_pin_id=reference_pin_id,
         reference_url=reference_url,
         generated_image_url=final_url,
-        prompt_used=gen.get("prompt_used", ""),
+        prompt_used=prompt_used,
         status="pending",
         regeneration_count=0,
     )
@@ -195,6 +213,46 @@ def _run_pipeline_for_bag(bag: BagQueue) -> dict:
         "telegram_message_id": message_id,
         "error": None,
     }
+
+
+def _pick_primary_side(bag: BagQueue) -> tuple[str, str]:
+    """Return (image_url, side_label) for the SINGLE bag photo this run.
+
+    Alternates between bag.image_path (front) and bag.image_path_open (back)
+    so the social feed cycles through both views across runs. Picks the side
+    with FEWER prior approvals (counted across every BagQueue row with the
+    same name, so storefront re-pulls share the same cycle).
+
+    Falls back to ("<front>", "front") when there is no back photo.
+    """
+    if not bag.image_path_open:
+        return bag.image_path, "front"
+
+    same_name_bag_ids = [
+        b.id for b in BagQueue.query.filter_by(
+            bag_name=bag.bag_name, tenant_id=bag.tenant_id,
+        ).all()
+    ]
+    rows = PendingApproval.query.filter(
+        PendingApproval.bag_queue_id.in_(same_name_bag_ids),
+    ).all() if same_name_bag_ids else []
+
+    front_count = sum(1 for r in rows if (r.prompt_used or "").startswith("side=front"))
+    back_count = sum(1 for r in rows if (r.prompt_used or "").startswith("side=back"))
+    # Historical rows have no side marker — treat them as front (the previous
+    # default) so the next pick leans toward back.
+    front_count += sum(
+        1 for r in rows
+        if not (r.prompt_used or "").startswith("side=")
+    )
+
+    chosen_side = "back" if back_count < front_count else "front"
+    chosen_url = bag.image_path_open if chosen_side == "back" else bag.image_path
+    logger.info(
+        "Bag %s «%s»: picked side=%s (front_used=%d, back_used=%d)",
+        bag.id, bag.bag_name, chosen_side, front_count, back_count,
+    )
+    return chosen_url, chosen_side
 
 
 def _fail(bag: BagQueue, error: str) -> dict:

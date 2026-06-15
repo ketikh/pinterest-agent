@@ -52,10 +52,12 @@ def health_check() -> bool:
 
 
 def list_products(in_stock_only: bool = True) -> list:
-    """Return the simplified product list from /api/products.
+    """Return the rich product list from /api/storefront/products.
 
-    Each item: {id, name, image_url, in_stock}.
-    Returns [] on any failure (logged).
+    Each item exposes the full storefront schema: id, name, code,
+    image_front, image_back, category_slug, in_stock, etc. We keep only
+    products whose category_slug is "bag" (excludes necklaces, aprons,
+    kids bags). Returns [] on any failure (logged).
     """
     base = _base_url()
     key = _api_key()
@@ -65,46 +67,59 @@ def list_products(in_stock_only: bool = True) -> list:
 
     try:
         r = requests.get(
-            f"{base}/api/products",
+            f"{base}/api/storefront/products",
             headers={"X-API-Key": key},
             timeout=TIMEOUT_SEC,
         )
     except requests.RequestException as exc:
-        logger.warning("Storefront /api/products network error: %s", exc)
+        logger.warning("Storefront /api/storefront/products network error: %s", exc)
         return []
 
     if r.status_code == 401 or r.status_code == 403:
         logger.error("Storefront API rejected our key (HTTP %d)", r.status_code)
         return []
     if r.status_code != 200:
-        logger.error("Storefront /api/products HTTP %d: %s", r.status_code, r.text[:200])
+        logger.error("Storefront /api/storefront/products HTTP %d: %s",
+                     r.status_code, r.text[:200])
         return []
 
     try:
-        data = r.json()
+        body = r.json()
     except ValueError:
-        logger.error("Storefront /api/products returned non-JSON: %s", r.text[:200])
+        logger.error("Storefront /api/storefront/products returned non-JSON: %s",
+                     r.text[:200])
         return []
-    if not isinstance(data, list):
-        logger.error("Storefront /api/products returned non-list: %r", data)
+
+    # /api/storefront/products wraps the list in {"products": [...]}, while the
+    # legacy /api/products returned a plain list. Accept both.
+    if isinstance(body, dict):
+        data = body.get("products", [])
+    elif isinstance(body, list):
+        data = body
+    else:
+        logger.error("Storefront products unexpected payload: %r", body)
         return []
 
     if in_stock_only:
         data = [p for p in data if p.get("in_stock") is True]
 
-    # Filter out known non-laptop-bag products. The storefront mixes bags
-    # with necklaces (ყელსაბამი), aprons (წინსაფარი) and child bags
-    # (ბავშვის ჩანთა) — we only want laptop bags. Earlier we used an
-    # INVENTORY_NAME_PREFIXES include-list defaulting to "Tissu", but the
-    # storefront then renamed every bag SKU to a colour/flower name
-    # (Olive, Lemon, Lagoon…) which broke that filter silently for days.
-    # Excluding the small fixed non-bag set is more robust to renames.
-    # Env overrides:
-    #   INVENTORY_NAME_EXCLUDES  — comma-separated substrings to exclude
-    #                              (default below covers the known non-bags)
-    #   INVENTORY_NAME_PREFIXES  — optional include-list (legacy); when set,
-    #                              behaves the same as before. Set to "*"
-    #                              or leave unset to use the exclude filter.
+    # Category filter — only laptop bags. The storefront uses category_slug
+    # to tag rows: 'bag' (what we want), 'necklace', 'apron', 'kidsbag'.
+    # Configurable via env to cover future categories without a deploy.
+    allowed_slug_raw = os.environ.get("INVENTORY_CATEGORY_SLUGS", "bag")
+    if allowed_slug_raw and allowed_slug_raw.strip() != "*":
+        allowed = tuple(s.strip() for s in allowed_slug_raw.split(",") if s.strip())
+        before = len(data)
+        data = [p for p in data if (p.get("category_slug") or "") in allowed]
+        if before != len(data):
+            logger.info(
+                "Inventory category-filter: kept %d/%d matching slugs %s",
+                len(data), before, allowed,
+            )
+
+    # Legacy escape hatches (kept for safety, default off):
+    #   INVENTORY_NAME_PREFIXES  — include-list by name prefix
+    #   INVENTORY_NAME_EXCLUDES  — substring exclude-list
     include_raw = os.environ.get("INVENTORY_NAME_PREFIXES", "*").strip()
     if include_raw and include_raw != "*":
         prefixes = tuple(p.strip() for p in include_raw.split(",") if p.strip())
@@ -118,10 +133,7 @@ def list_products(in_stock_only: bool = True) -> list:
                 )
         return data
 
-    exclude_raw = os.environ.get(
-        "INVENTORY_NAME_EXCLUDES",
-        "ყელსაბამი,წინსაფარი,ბავშვის",
-    )
+    exclude_raw = os.environ.get("INVENTORY_NAME_EXCLUDES", "")
     excludes = tuple(e.strip() for e in exclude_raw.split(",") if e.strip())
     if excludes:
         before = len(data)
