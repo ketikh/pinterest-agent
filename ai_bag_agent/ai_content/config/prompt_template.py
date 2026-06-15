@@ -6,8 +6,11 @@ advertising photo of the bag shown in the PRIMARY image.
 
 THE BAG IS SACRED — IT MUST NOT CHANGE.
 The output bag must be a pixel-faithful copy of the input bag. The SHAPE,
-SILHOUETTE, OUTLINE, and CONTOUR are immutable. The SIZE inside the frame
-must not shrink. If you change the bag in any way, the output is wrong.
+SILHOUETTE, OUTLINE, CONTOUR, WIDTH, HEIGHT, DEPTH, and aspect ratio are
+ALL immutable. If the reference photo shows a wider/narrower/taller/
+shorter bag, IGNORE the reference's bag entirely — its dimensions must
+NOT bleed into the primary bag. If you change the bag in any way, the
+output is wrong.
 
 RULES:
 1. PRIMARY IMAGE (first): the exact bag/product being sold.
@@ -46,21 +49,41 @@ RULES:
    - The bag is the HERO of the photo — center it, keep it prominent,
      give it the same visual weight it has in the input.
 
-2. REFERENCE IMAGE (second): photography style guide ONLY.
+2. REFERENCE IMAGE (second): photography style guide ONLY — never a shape source.
    - LIGHTING IS THE PRIMARY MATCH: copy the reference's lighting direction,
      color temperature, intensity, shadow softness, and highlights — and
      APPLY THAT SAME LIGHTING TO THE BAG. The bag must look like it was
      photographed in the reference's lighting environment.
    - Copy the background mood, staging, and composition as well.
    - Do NOT copy any products, models, bags, or items from the reference.
-   - Do NOT let the reference's bag size/shape influence the primary bag.
    - The reference is inspiration for the SCENE and LIGHT, not the SUBJECT.
+
+   *** ANTI-DIMENSION-BLEEDING — READ TWICE ***
+   The reference photo may contain a bag that is WIDER, TALLER, FATTER,
+   SLIMMER, BOXIER, or otherwise SHAPED DIFFERENTLY than the PRIMARY bag.
+   This is IRRELEVANT and FORBIDDEN as a source of dimensions. Common
+   failure mode: the model sees a wide bag in the reference and silently
+   widens the primary bag to "harmonise" with the scene. THIS IS WRONG.
+   - Width: the PRIMARY bag's width-to-height ratio is LOCKED. If the
+     primary is portrait (taller than wide), the output STAYS portrait
+     by the exact same ratio, even if the reference shows a wide tote.
+   - Height: same rule — primary's height is locked.
+   - Depth (front-back thickness): same rule — flat clutches stay flat,
+     boxy bags stay boxy. Do not puff or flatten to match the reference.
+   - Volume: don't add roundness, sag, or stuffing inferred from the
+     reference. Keep the primary bag's actual fullness.
+   - Aspect ratio of the bag's bounding box must match the primary image
+     within 5%. If it doesn't, the output is wrong — redo it.
+   - The reference's bag shape, width, height, and proportions DO NOT
+     EXIST for the purposes of rendering the primary bag.
 
 3. SINGLE-BAG RULE (anti-overlay / anti-ghosting):
    - The output contains the PRIMARY bag exactly ONCE — one solid silhouette.
    - NO transparency on the bag, NO ghosting, NO duplicate copies, NO
      blending with the reference's bag, NO double-exposure effects.
    - If the reference image contains any bag/product, IGNORE it completely.
+   - Treat the reference bag as if it weren't there at all when choosing
+     the primary bag's shape and dimensions.
 
 OUTPUT REQUIREMENTS:
 - Photorealistic, commercial studio-quality photograph
