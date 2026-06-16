@@ -12,12 +12,66 @@
 <div class="alert alert-light border d-flex align-items-start gap-2 mb-4">
   <i class="bi bi-info-circle text-primary mt-1"></i>
   <div class="small text-muted">
-    ფოტოები storefront-იდან მოდის (<code>/api/inspirations?category=necklace</code>).
-    თითო ყელსაბამზე ატვირთე <strong>„ყელზე" ფოტო</strong> (ზომის რეფერენსი) და დააჭირე
-    <strong>გენერაცია</strong>-ს. Pinterest <em>jewelry</em> დაფიდან ავტომატურად აიღება სცენა/განათება,
-    პროდუქტი კი უცვლელად შენარჩუნდება. შედეგი Telegram-ში მოვა დასადასტურებლად.
+    პრომპტი <strong>ავტომატურია</strong> — ხელით წერა არ გჭირდება. დააჭირე <strong>გენერაცია</strong>-ს
+    და ფოტო Telegram-ში მოვა დასადასტურებლად. უკვე დაგენერირებულის
+    <strong>🔄 თავიდან</strong> გასაკეთებლად ხელახლა ატვირთვა <em>არ</em> გჭირდება.
+    „ყელზე" ფოტო არასავალდებულოა — თუ ატვირთავ, ზომა უფრო ზუსტი იქნება.
   </div>
 </div>
+
+{% if generated %}
+<h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.78rem;letter-spacing:.04em">
+  დაგენერირებული
+</h6>
+<div class="row g-3 mb-5">
+  {% for g in generated %}
+  {% set bag = g.bag %}
+  {% set ap = g.approval %}
+  <div class="col-6 col-md-4 col-xl-3">
+    <div class="card border-0 shadow-sm h-100">
+      <img src="{{ (ap.generated_image_url if ap and ap.generated_image_url else bag.image_path) }}"
+           alt="{{ bag.bag_name }}"
+           style="height:180px;object-fit:cover;border-top-left-radius:.5rem;border-top-right-radius:.5rem;">
+      <div class="card-body p-2">
+        <div class="small fw-medium text-truncate" title="{{ bag.bag_name }}">{{ bag.bag_name }}</div>
+        <div class="mb-2">
+          {% if bag.status == 'processing' %}
+            <span class="badge bg-info text-dark">
+              <span class="spinner-border spinner-border-sm me-1" style="width:.6rem;height:.6rem"></span>მუშავდება
+            </span>
+          {% elif bag.status == 'failed' %}
+            <span class="badge bg-danger">ვერ მოხერხდა</span>
+          {% elif ap %}
+            <span class="badge badge-{{ ap.status }}">{{ ap.status }}</span>
+          {% else %}
+            <span class="badge badge-{{ bag.status }}">{{ bag.status }}</span>
+          {% endif %}
+        </div>
+        <div class="d-flex gap-1">
+          <form method="POST" action="{{ url_for('ai_content.necklaces_regenerate', bag_id=bag.id) }}"
+                class="flex-grow-1"
+                onsubmit="return confirm('თავიდან დავაგენერირო «{{ bag.bag_name }}»?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-sm btn-outline-primary w-100"
+                    {% if bag.status == 'processing' %}disabled{% endif %}>
+              <i class="bi bi-arrow-repeat"></i> თავიდან
+            </button>
+          </form>
+          <a href="{{ url_for('ai_content.approvals') }}" class="btn btn-sm btn-outline-secondary"
+             title="Approvals-ში ნახვა">
+            <i class="bi bi-box-arrow-up-right"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.78rem;letter-spacing:.04em">
+  ახალი გენერაცია
+</h6>
 
 {% if items %}
 <div class="row g-4">
@@ -41,33 +95,26 @@
           <input type="hidden" name="product_url" value="{{ item.image_url }}">
           <input type="hidden" name="name" value="{{ item.caption or ('Necklace #' ~ item.id) }}">
 
-          <div class="mb-2">
-            <label class="form-label small fw-medium mb-1">
-              „ყელზე" ფოტო <span class="text-danger">*</span>
-            </label>
-            <input type="file" name="neck_image" class="form-control form-control-sm"
-                   accept=".jpg,.jpeg,.png,.webp" required>
-            <div class="form-text" style="font-size:.72rem">
-              ზომის რეფერენსი — როგორ ზის ყელზე. პროდუქტი ამით არ იცვლება.
+          <details class="mb-2">
+            <summary class="small text-muted" style="cursor:pointer">
+              დამატებითი პარამეტრები (არასავალდებულო)
+            </summary>
+            <div class="mt-2">
+              <label class="form-label small fw-medium mb-1">„ყელზე" ფოტო</label>
+              <input type="file" name="neck_image" class="form-control form-control-sm"
+                     accept=".jpg,.jpeg,.png,.webp">
+              <div class="form-text" style="font-size:.72rem">ზომის რეფერენსი — სჯობს ატვირთო, მაგრამ სავალდებულო არ არის.</div>
+
+              <label class="form-label small fw-medium mb-1 mt-2">Reference URL</label>
+              <input type="url" name="reference_url" class="form-control form-control-sm"
+                     placeholder="https://i.pinimg.com/...">
+              <div class="form-text" style="font-size:.72rem">ცარიელი = Pinterest jewelry დაფა ავტომატურად.</div>
+
+              <label class="form-label small fw-medium mb-1 mt-2">Custom Prompt</label>
+              <textarea name="custom_prompt" class="form-control form-control-sm" rows="2"
+                        placeholder="მაგ: 3 charms — 1 silver shell, 1 white flower, 1 blue shell"></textarea>
             </div>
-          </div>
-
-          <div class="mb-2">
-            <label class="form-label small fw-medium mb-1">
-              Reference URL <span class="text-muted fw-normal">(სურვილისამებრ)</span>
-            </label>
-            <input type="url" name="reference_url" class="form-control form-control-sm"
-                   placeholder="https://i.pinimg.com/...">
-            <div class="form-text" style="font-size:.72rem">ცარიელი = Pinterest jewelry დაფა ავტომატურად.</div>
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label small fw-medium mb-1">
-              Custom Prompt <span class="text-muted fw-normal">(სურვილისამებრ)</span>
-            </label>
-            <textarea name="custom_prompt" class="form-control form-control-sm" rows="2"
-                      placeholder="მაგ: outdoor, soft daylight"></textarea>
-          </div>
+          </details>
 
           <button type="submit" class="btn btn-primary btn-sm w-100">
             <i class="bi bi-magic me-1"></i> გენერაცია
@@ -84,7 +131,6 @@
   <p class="mt-3 mb-1">ყელსაბამები ვერ წამოვიღე storefront-იდან.</p>
   <p class="small">
     შეამოწმე <code>INSPIRATIONS_API_KEY</code> და რომ <code>/api/inspirations</code> endpoint ჩართულია.
-    ან jewelry-კატეგორიაში ჯერ ფოტოები არ არის ატვირთული.
   </p>
 </div>
 {% endif %}

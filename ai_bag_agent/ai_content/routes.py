@@ -265,16 +265,49 @@ def queue_reorder():
 @ai_content_bp.route("/necklaces")
 @login_required
 def necklaces():
-    """List necklace reference photos pulled from the storefront inspirations API."""
+    """Necklace gallery (generate new) + already-generated necklaces (regenerate)."""
     from .services.inspirations_client import list_inspirations
     items = list_inspirations(category="necklace")
-    return render_template("ai_content/necklaces.html", items=items)
+
+    # Already-generated necklaces, newest first, each with its latest result.
+    rows = (
+        BagQueue.query.filter_by(product_type="necklace")
+        .order_by(BagQueue.created_at.desc())
+        .limit(24)
+        .all()
+    )
+    generated = []
+    for bag in rows:
+        latest = (
+            PendingApproval.query.filter_by(bag_queue_id=bag.id)
+            .order_by(PendingApproval.created_at.desc())
+            .first()
+        )
+        generated.append({"bag": bag, "approval": latest})
+
+    return render_template(
+        "ai_content/necklaces.html", items=items, generated=generated,
+    )
+
+
+def _start_async(fn) -> None:
+    """Run fn(app) in a daemon thread with an app context (fire-and-forget)."""
+    import threading
+    from flask import current_app
+    app = current_app._get_current_object()
+
+    def _runner():
+        with app.app_context():
+            fn(app)
+
+    threading.Thread(target=_runner, daemon=True).start()
 
 
 @ai_content_bp.route("/necklaces/generate", methods=["POST"])
 @login_required
 def necklaces_generate():
-    """Queue one necklace + its on-neck size photo, then run the pipeline."""
+    """One-click generate. On-neck photo is OPTIONAL (improves size accuracy);
+    the prompt is the built-in necklace default — no manual prompt needed."""
     name = request.form.get("name", "").strip() or "Necklace"
     product_url = request.form.get("product_url", "").strip()
     custom_prompt = request.form.get("custom_prompt", "").strip() or None
@@ -284,32 +317,29 @@ def necklaces_generate():
     if not product_url:
         flash("პროდუქტის ფოტო ვერ მოიძებნა — სცადე გვერდის განახლება.", "danger")
         return redirect(url_for("ai_content.necklaces"))
-    if not file or not file.filename:
-        flash("„ყელზე“ ფოტო სავალდებულოა.", "danger")
-        return redirect(url_for("ai_content.necklaces"))
-    if not _allowed_file(file.filename):
-        flash("მხოლოდ JPG, PNG ან WebP ფორმატია დაშვებული.", "danger")
-        return redirect(url_for("ai_content.necklaces"))
 
-    from .services.cloudinary_svc import upload_image
-    suffix = pathlib.Path(secure_filename(file.filename)).suffix
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        file.save(tmp.name)
-        result = upload_image(tmp.name, tenant_id="default", category="references")
-    os.unlink(tmp.name)
+    # On-neck photo is optional. When provided, upload it as the size reference.
+    on_neck_url = None
+    if file and file.filename:
+        if not _allowed_file(file.filename):
+            flash("მხოლოდ JPG, PNG ან WebP ფორმატია დაშვებული.", "danger")
+            return redirect(url_for("ai_content.necklaces"))
+        from .services.cloudinary_svc import upload_image
+        suffix = pathlib.Path(secure_filename(file.filename)).suffix
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            file.save(tmp.name)
+            result = upload_image(tmp.name, tenant_id="default", category="references")
+        os.unlink(tmp.name)
+        if not result["success"]:
+            flash(f"„ყელზე“ ფოტო Cloudinary-ზე ვერ ავიდა: {result['error']}", "danger")
+            return redirect(url_for("ai_content.necklaces"))
+        on_neck_url = result["public_url"]
 
-    if not result["success"]:
-        flash(f"„ყელზე“ ფოტო Cloudinary-ზე ვერ ავიდა: {result['error']}", "danger")
-        return redirect(url_for("ai_content.necklaces"))
-
-    # image_path = product photo (from inspirations), image_path_open = the
-    # on-neck size reference. product_type="necklace" routes the pipeline to
-    # the jewelry board + necklace prompt.
     bag = BagQueue(
         product_type="necklace",
         bag_name=name,
         image_path=product_url,
-        image_path_open=result["public_url"],
+        image_path_open=on_neck_url,  # None = no size reference (one-click mode)
         custom_prompt=custom_prompt,
         reference_url=reference_url,
         status="pending",
@@ -317,19 +347,52 @@ def necklaces_generate():
     )
     db.session.add(bag)
     db.session.commit()
-
-    import threading
-    from flask import current_app
-    app = current_app._get_current_object()
     bag_id = bag.id
 
-    def _run_pipeline_async():
-        with app.app_context():
+    def _run(_app):
+        from .services.orchestrator import trigger_for_bag
+        trigger_for_bag(bag_id)
+
+    _start_async(_run)
+    flash(f"⏳ «{name}» — გენერაცია დაიწყო. ფოტო Telegram-ში მოვა ~60 წამში.", "info")
+    return redirect(url_for("ai_content.necklaces"))
+
+
+@ai_content_bp.route("/necklaces/<int:bag_id>/regenerate", methods=["POST"])
+@login_required
+def necklaces_regenerate(bag_id: int):
+    """Re-run a necklace WITHOUT re-uploading — reuses the saved product photo,
+    on-neck photo, and prompt. New photo arrives in Telegram for approval."""
+    bag = BagQueue.query.get_or_404(bag_id)
+    if bag.product_type != "necklace":
+        flash("ეს ჩანაწერი ყელსაბამი არ არის.", "warning")
+        return redirect(url_for("ai_content.necklaces"))
+
+    latest = (
+        PendingApproval.query.filter_by(bag_queue_id=bag.id)
+        .order_by(PendingApproval.created_at.desc())
+        .first()
+    )
+    if latest is not None:
+        approval_id = latest.id
+
+        def _run(_app):
+            from .services.orchestrator import regenerate_approval
+            regenerate_approval(approval_id)
+
+        _start_async(_run)
+    else:
+        # Never produced an approval (e.g. failed) — re-trigger the saved row.
+        bag.status = "failed"
+        db.session.commit()
+
+        def _run(_app):
             from .services.orchestrator import trigger_for_bag
             trigger_for_bag(bag_id)
 
-    threading.Thread(target=_run_pipeline_async, daemon=True).start()
-    flash(f"⏳ «{name}» — გენერაცია დაიწყო. ფოტო Telegram-ში მოვა ~60 წამში.", "info")
+        _start_async(_run)
+
+    flash(f"🔄 «{bag.bag_name}» — რეგენერაცია დაიწყო. ახალი ფოტო Telegram-ში მოვა.", "info")
     return redirect(url_for("ai_content.necklaces"))
 
 
