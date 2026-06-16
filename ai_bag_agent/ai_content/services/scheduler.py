@@ -26,6 +26,39 @@ logger = logging.getLogger(__name__)
 _scheduler: Optional[BackgroundScheduler] = None
 
 
+def _parse_time(hour_env: str, minute_env: str, default_hour: int,
+                default_minute: int) -> tuple:
+    """Read an hour/minute from env, tolerating "HH", "HH:MM", and bad values.
+
+    Operators naturally type a full time like "22:00" into an hour variable;
+    a bare int() on that raised ValueError and crashed the whole scheduler.
+    """
+    raw_hour = (os.environ.get(hour_env, "") or "").strip()
+    raw_minute = (os.environ.get(minute_env, "") or "").strip()
+
+    hour, minute = default_hour, default_minute
+    if ":" in raw_hour:  # e.g. "22:00" or "22:30" in the hour var
+        h_part, _, m_part = raw_hour.partition(":")
+        try:
+            hour = int(h_part.strip())
+            minute = int(m_part.strip()) if m_part.strip() else default_minute
+        except ValueError:
+            hour, minute = default_hour, default_minute
+        return hour, minute
+
+    if raw_hour:
+        try:
+            hour = int(raw_hour)
+        except ValueError:
+            hour = default_hour
+    if raw_minute:
+        try:
+            minute = int(raw_minute)
+        except ValueError:
+            minute = default_minute
+    return hour, minute
+
+
 def init_scheduler(flask_app) -> Optional[BackgroundScheduler]:
     """Start the BackgroundScheduler in the current process.
 
@@ -52,14 +85,14 @@ def init_scheduler(flask_app) -> Optional[BackgroundScheduler]:
         return _scheduler
 
     timezone = os.environ.get("SCHEDULER_TIMEZONE", "Asia/Tbilisi")
-    morning_hour = int(os.environ.get("MORNING_JOB_HOUR", "12"))
-    morning_minute = int(os.environ.get("MORNING_JOB_MINUTE", "0"))
-    evening_hour = int(os.environ.get("EVENING_JOB_HOUR", "20"))
-    evening_minute = int(os.environ.get("EVENING_JOB_MINUTE", "0"))
+    morning_hour, morning_minute = _parse_time(
+        "MORNING_JOB_HOUR", "MORNING_JOB_MINUTE", 12, 0)
+    evening_hour, evening_minute = _parse_time(
+        "EVENING_JOB_HOUR", "EVENING_JOB_MINUTE", 20, 0)
     # Necklaces post later than bags (default 22:00) so each product type gets
     # its own slot in the daily feed.
-    necklace_post_hour = int(os.environ.get("NECKLACE_POST_HOUR", "22"))
-    necklace_post_minute = int(os.environ.get("NECKLACE_POST_MINUTE", "0"))
+    necklace_post_hour, necklace_post_minute = _parse_time(
+        "NECKLACE_POST_HOUR", "NECKLACE_POST_MINUTE", 22, 0)
 
     scheduler = BackgroundScheduler(timezone=timezone)
 
