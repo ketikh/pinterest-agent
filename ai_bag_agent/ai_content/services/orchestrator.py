@@ -43,9 +43,11 @@ def run_generate_job(tenant_id: str = "default") -> dict:
 
     Returns: {success, bag_id, approval_id, error}
     """
+    # Auto-job is bag-only. Necklaces are triggered manually from the
+    # Necklaces admin page so they never get swept up by the 09:00 cron.
     bag = (
         BagQueue.query
-        .filter_by(status="pending", tenant_id=tenant_id)
+        .filter_by(status="pending", tenant_id=tenant_id, product_type="bag")
         .order_by(BagQueue.sort_order.asc(), BagQueue.created_at.asc())
         .first()
     )
@@ -98,6 +100,7 @@ def _pull_bag_from_inventory(tenant_id: str = "default") -> Optional[BagQueue]:
 
     bag = BagQueue(
         tenant_id=tenant_id,
+        product_type="bag",
         bag_name=product["name"],
         image_path=front,
         image_path_open=back,  # back-side photo of the same bag
@@ -187,12 +190,20 @@ def _run_pipeline_for_bag(bag: BagQueue) -> dict:
         return _fail(bag, f"unhandled exception: {exc}")
 
 
+def _board_url_for(product_type: str) -> str:
+    """Pinterest board URL for a product type. Necklaces use the jewelry board."""
+    if product_type == "necklace":
+        return os.environ.get("PINTEREST_BOARD_URL_JEWELRY", "")
+    return os.environ.get("PINTEREST_BOARD_URL", "")
+
+
 def _run_pipeline_for_bag_inner(bag: BagQueue) -> dict:
     bag_id = bag.id
     tenant_id = bag.tenant_id
+    product_type = bag.product_type or "bag"
     bag.status = "processing"
     db.session.commit()
-    _trace_step(bag_id, "status=processing committed")
+    _trace_step(bag_id, f"status=processing committed (type={product_type})")
 
     # ---- 1. Reference image (manual override > Pinterest) ----------------
     if bag.reference_url:
@@ -201,7 +212,7 @@ def _run_pipeline_for_bag_inner(bag: BagQueue) -> dict:
         logger.info("Bag %s: using manual reference_url", bag_id)
         _trace_step(bag_id, "ref=manual")
     else:
-        board_url = os.environ.get("PINTEREST_BOARD_URL", "")
+        board_url = _board_url_for(product_type)
         _trace_step(bag_id, "calling Pinterest get_random_pin")
         # Use the client's default exclude_recent_days (365) so we cycle
         # through every pin on the board exactly once before any repeats.
@@ -217,19 +228,39 @@ def _run_pipeline_for_bag_inner(bag: BagQueue) -> dict:
         reference_pin_id = pin.get("pin_id")
         _trace_step(bag_id, f"Pinterest OK pin_id={reference_pin_id}")
 
-    # ---- 2. Pick front OR back (never both) and call kie.ai -----------------
-    # Each generation uses ONE side of the bag — alternates based on how many
-    # approvals already exist for the same bag_name. The model gets that side
-    # + the Pinterest reference, never both front/back together.
-    primary_url, chosen_side = _pick_primary_side(bag)
-    _trace_step(bag_id, f"chose side={chosen_side}")
-    _trace_step(bag_id, "calling kie.ai generate_image")
-    gen = ai_generator.generate_image(
-        bag_image_path=primary_url,
-        reference_image_url=reference_url,
-        custom_prompt=bag.custom_prompt or "",
-        tenant_id=tenant_id,
-    )
+    # ---- 2. Build kie.ai inputs + prompt (differs by product type) ---------
+    if product_type == "necklace":
+        # Necklace: the product photo is always the primary; image_path_open
+        # is the on-neck SIZE reference (third image), not a second view.
+        from ..config.necklace_prompt import build_necklace_prompt
+        primary_url = bag.image_path
+        chosen_side = "necklace"
+        neck_ref_url = bag.image_path_open or None
+        prompt_override = build_necklace_prompt(
+            bag.custom_prompt or "", has_neck_ref=bool(neck_ref_url),
+        )
+        _trace_step(bag_id, f"necklace inputs (neck_ref={bool(neck_ref_url)})")
+        _trace_step(bag_id, "calling kie.ai generate_image")
+        gen = ai_generator.generate_image(
+            bag_image_path=primary_url,
+            reference_image_url=reference_url,
+            custom_prompt=bag.custom_prompt or "",
+            tenant_id=tenant_id,
+            bag_image_open_url=neck_ref_url,
+            prompt_override=prompt_override,
+        )
+    else:
+        # Bag: use ONE side of the bag — alternates front/back across runs.
+        # The model gets that side + the Pinterest reference, never both sides.
+        primary_url, chosen_side = _pick_primary_side(bag)
+        _trace_step(bag_id, f"chose side={chosen_side}")
+        _trace_step(bag_id, "calling kie.ai generate_image")
+        gen = ai_generator.generate_image(
+            bag_image_path=primary_url,
+            reference_image_url=reference_url,
+            custom_prompt=bag.custom_prompt or "",
+            tenant_id=tenant_id,
+        )
     _trace_step(bag_id, f"kie.ai returned success={gen['success']}")
     if not gen["success"]:
         return _fail(bag, f"kie.ai: {gen['error']}")

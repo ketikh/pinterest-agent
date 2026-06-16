@@ -259,6 +259,81 @@ def queue_reorder():
 
 
 # ---------------------------------------------------------------------------
+# Necklaces (scarf-necklaces) — manual generation from storefront inspirations
+# ---------------------------------------------------------------------------
+
+@ai_content_bp.route("/necklaces")
+@login_required
+def necklaces():
+    """List necklace reference photos pulled from the storefront inspirations API."""
+    from .services.inspirations_client import list_inspirations
+    items = list_inspirations(category="necklace")
+    return render_template("ai_content/necklaces.html", items=items)
+
+
+@ai_content_bp.route("/necklaces/generate", methods=["POST"])
+@login_required
+def necklaces_generate():
+    """Queue one necklace + its on-neck size photo, then run the pipeline."""
+    name = request.form.get("name", "").strip() or "Necklace"
+    product_url = request.form.get("product_url", "").strip()
+    custom_prompt = request.form.get("custom_prompt", "").strip() or None
+    reference_url = request.form.get("reference_url", "").strip() or None
+    file = request.files.get("neck_image")
+
+    if not product_url:
+        flash("პროდუქტის ფოტო ვერ მოიძებნა — სცადე გვერდის განახლება.", "danger")
+        return redirect(url_for("ai_content.necklaces"))
+    if not file or not file.filename:
+        flash("„ყელზე“ ფოტო სავალდებულოა.", "danger")
+        return redirect(url_for("ai_content.necklaces"))
+    if not _allowed_file(file.filename):
+        flash("მხოლოდ JPG, PNG ან WebP ფორმატია დაშვებული.", "danger")
+        return redirect(url_for("ai_content.necklaces"))
+
+    from .services.cloudinary_svc import upload_image
+    suffix = pathlib.Path(secure_filename(file.filename)).suffix
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        file.save(tmp.name)
+        result = upload_image(tmp.name, tenant_id="default", category="references")
+    os.unlink(tmp.name)
+
+    if not result["success"]:
+        flash(f"„ყელზე“ ფოტო Cloudinary-ზე ვერ ავიდა: {result['error']}", "danger")
+        return redirect(url_for("ai_content.necklaces"))
+
+    # image_path = product photo (from inspirations), image_path_open = the
+    # on-neck size reference. product_type="necklace" routes the pipeline to
+    # the jewelry board + necklace prompt.
+    bag = BagQueue(
+        product_type="necklace",
+        bag_name=name,
+        image_path=product_url,
+        image_path_open=result["public_url"],
+        custom_prompt=custom_prompt,
+        reference_url=reference_url,
+        status="pending",
+        sort_order=0,
+    )
+    db.session.add(bag)
+    db.session.commit()
+
+    import threading
+    from flask import current_app
+    app = current_app._get_current_object()
+    bag_id = bag.id
+
+    def _run_pipeline_async():
+        with app.app_context():
+            from .services.orchestrator import trigger_for_bag
+            trigger_for_bag(bag_id)
+
+    threading.Thread(target=_run_pipeline_async, daemon=True).start()
+    flash(f"⏳ «{name}» — გენერაცია დაიწყო. ფოტო Telegram-ში მოვა ~60 წამში.", "info")
+    return redirect(url_for("ai_content.necklaces"))
+
+
+# ---------------------------------------------------------------------------
 # Approvals
 # ---------------------------------------------------------------------------
 
@@ -463,6 +538,8 @@ _CREDENTIAL_KEYS = (
     ("FB_PAGE_TOKEN", "Facebook token"),
     ("FB_PAGE_ID", "Facebook page"),
     ("IG_BUSINESS_ACCOUNT_ID", "Instagram"),
+    ("STOREFRONT_API_KEY", "Storefront (bags)"),
+    ("INSPIRATIONS_API_KEY", "Inspirations (necklaces)"),
 )
 
 

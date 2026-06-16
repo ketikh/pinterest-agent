@@ -220,6 +220,26 @@ class TestGenerateImage:
     @patch("ai_bag_agent.ai_content.services.ai_generator._download_generated")
     @patch("ai_bag_agent.ai_content.services.ai_generator._poll_for_result")
     @patch("ai_bag_agent.ai_content.services.ai_generator._submit_task")
+    def test_prompt_override_is_used_verbatim(self, mock_submit, mock_poll, mock_download):
+        """When prompt_override is given, the bag template is bypassed."""
+        mock_submit.return_value = TASK_ID
+        mock_poll.return_value = (GENERATED_URL, None)
+        mock_download.return_value = None
+
+        override = "NECKLACE PROMPT — keep shells and charms identical."
+        generate_image(BAG_URL, REF_URL, "ignored custom", prompt_override=override)
+
+        # _submit_task receives the prompt as its 5th positional arg (prompt=...)
+        _, kwargs = mock_submit.call_args
+        sent_prompt = kwargs.get("prompt")
+        assert sent_prompt == override
+        # The bag template signature phrase must NOT be present.
+        assert "THE BAG IS SACRED" not in sent_prompt
+
+    @patch.dict("os.environ", {"KIE_AI_API_KEY": FAKE_API_KEY})
+    @patch("ai_bag_agent.ai_content.services.ai_generator._download_generated")
+    @patch("ai_bag_agent.ai_content.services.ai_generator._poll_for_result")
+    @patch("ai_bag_agent.ai_content.services.ai_generator._submit_task")
     def test_result_dict_has_all_keys(self, mock_submit, mock_poll, mock_download):
         mock_submit.return_value = TASK_ID
         mock_poll.return_value = (GENERATED_URL, None)

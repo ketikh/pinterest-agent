@@ -49,6 +49,13 @@ class BagQueue(db.Model):
 
     id: int = db.Column(db.Integer, primary_key=True)
     tenant_id: str = db.Column(db.String(64), nullable=False, default=DEFAULT_TENANT, index=True)
+    # Product category — "bag" (default) or "necklace". Controls which
+    # Pinterest board + prompt template the pipeline uses. For necklaces,
+    # image_path_open is repurposed as the "on-neck size" reference photo
+    # (NOT a second view to render).
+    product_type: str = db.Column(
+        db.String(32), nullable=False, default="bag", index=True
+    )
     bag_name: str = db.Column(db.String(256), nullable=False)
     image_path: str = db.Column(db.String(512), nullable=False)  # Cloudinary URL after upload
     # Optional second photo of the SAME bag, opened up (helps kie.ai understand

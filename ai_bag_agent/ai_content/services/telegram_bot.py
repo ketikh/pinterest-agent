@@ -617,15 +617,7 @@ def _blocking_regenerate(old_approval_id: int, extra_prompt: str = "") -> Option
             bag = old.bag
             new_regen_count = old.regeneration_count + 1
             bag_queue_id = bag.id
-            old_side = "front"
-            if (old.prompt_used or "").startswith("side=back"):
-                old_side = "back"
-            if bag.image_path_open:
-                new_side = "front" if old_side == "back" else "back"
-            else:
-                new_side = "front"
-            primary_url = bag.image_path_open if new_side == "back" else bag.image_path
-            chosen_side = new_side
+            product_type = bag.product_type or "bag"
             custom_prompt = bag.custom_prompt or ""
             if extra_prompt:
                 custom_prompt = (custom_prompt + "\n" + extra_prompt).strip() if custom_prompt else extra_prompt
@@ -634,11 +626,32 @@ def _blocking_regenerate(old_approval_id: int, extra_prompt: str = "") -> Option
             # Pinterest is briefly unreachable during this regen.
             old_reference_url = old.reference_url
             old_reference_pin_id = old.reference_pin_id
-            _trace_step(old_approval_id, f"REGEN bag #{bag_queue_id}, side={chosen_side}, regen->{new_regen_count}")
+            neck_ref_url = None
+            if product_type == "necklace":
+                # Product photo is always primary; image_path_open is the
+                # on-neck SIZE reference, not a second view to render.
+                primary_url = bag.image_path
+                chosen_side = "necklace"
+                neck_ref_url = bag.image_path_open or None
+            else:
+                old_side = "front"
+                if (old.prompt_used or "").startswith("side=back"):
+                    old_side = "back"
+                if bag.image_path_open:
+                    new_side = "front" if old_side == "back" else "back"
+                else:
+                    new_side = "front"
+                primary_url = bag.image_path_open if new_side == "back" else bag.image_path
+                chosen_side = new_side
+            _trace_step(old_approval_id, f"REGEN bag #{bag_queue_id} type={product_type}, side={chosen_side}, regen->{new_regen_count}")
 
         _trace_step(old_approval_id, "REGEN calling Pinterest get_random_pin")
+        board_env = (
+            "PINTEREST_BOARD_URL_JEWELRY" if product_type == "necklace"
+            else "PINTEREST_BOARD_URL"
+        )
         pin_result = get_random_pin(
-            board_url=os.environ.get("PINTEREST_BOARD_URL", ""),
+            board_url=os.environ.get(board_env, ""),
             tenant_id=tenant_id,
         )
         if not pin_result["success"]:
@@ -661,12 +674,25 @@ def _blocking_regenerate(old_approval_id: int, extra_prompt: str = "") -> Option
         _trace_step(old_approval_id, f"REGEN Pinterest OK pin={pin_result.get('pin_id')}")
 
         _trace_step(old_approval_id, "REGEN calling kie.ai")
-        gen = generate_image(
-            bag_image_path=primary_url,
-            reference_image_url=pin_result["image_url"],
-            custom_prompt=custom_prompt,
-            tenant_id=tenant_id,
-        )
+        if product_type == "necklace":
+            from ..config.necklace_prompt import build_necklace_prompt
+            gen = generate_image(
+                bag_image_path=primary_url,
+                reference_image_url=pin_result["image_url"],
+                custom_prompt=custom_prompt,
+                tenant_id=tenant_id,
+                bag_image_open_url=neck_ref_url,
+                prompt_override=build_necklace_prompt(
+                    custom_prompt, has_neck_ref=bool(neck_ref_url),
+                ),
+            )
+        else:
+            gen = generate_image(
+                bag_image_path=primary_url,
+                reference_image_url=pin_result["image_url"],
+                custom_prompt=custom_prompt,
+                tenant_id=tenant_id,
+            )
         _trace_step(old_approval_id, f"REGEN kie.ai returned success={gen['success']}")
         if not gen["success"]:
             raise RuntimeError(f"kie.ai: {gen['error']}")

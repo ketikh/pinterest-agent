@@ -74,6 +74,7 @@ def generate_image(
     tenant_id: str = "default",
     include_bag_input: bool = True,
     bag_image_open_url: Optional[str] = None,
+    prompt_override: Optional[str] = None,
 ) -> dict:
     """Generate a promotional bag photo using kie.ai Nano Banana Pro.
 
@@ -83,10 +84,12 @@ def generate_image(
         reference_image_url: Public URL of the Pinterest reference photo.
         custom_prompt: Optional per-bag prompt additions.
         tenant_id: Tenant identifier for storage organisation.
-        bag_image_open_url: Optional URL of the SAME bag photographed open —
-                            used purely as a reference so kie.ai understands
-                            interior shape/proportions. The closed bag remains
-                            the primary subject.
+        bag_image_open_url: Optional URL of a SECOND reference image (the same
+                            bag opened, or — for necklaces — the on-neck size
+                            photo). Sent as the third image; used as reference
+                            only, never rendered directly.
+        prompt_override: If set, use this prompt verbatim instead of the bag
+                            template (used by the necklace pipeline).
 
     Returns:
         dict with keys: success, generated_url, local_path,
@@ -129,7 +132,13 @@ def generate_image(
                 bag_image_open_url,
             )
 
-    prompt = build_prompt(custom_prompt, has_open_bag=bool(bag_open_url))
+    # `prompt_override` lets a different product type (e.g. necklaces) supply
+    # its own fully-formed prompt — including any note about the third image —
+    # instead of the bag template.
+    if prompt_override:
+        prompt = prompt_override
+    else:
+        prompt = build_prompt(custom_prompt, has_open_bag=bool(bag_open_url))
     t_start = time.monotonic()
 
     # Step 1 — submit task (with retries for server overload)
