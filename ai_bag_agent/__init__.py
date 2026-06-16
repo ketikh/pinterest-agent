@@ -103,7 +103,64 @@ def create_app(config_override: Optional[Dict] = None) -> Flask:
             else:
                 info[key] = "not-found"
 
-        return _json.dumps(info, indent=2, ensure_ascii=False), 200, {
+        # Safe diagnostics — approval/post state so we can see why something
+        # didn't post, without exposing the admin panel. No secrets.
+        try:
+            from sqlalchemy import func
+            from .ai_content.models import BagQueue, PendingApproval, PostLog
+            with app.app_context():
+                rows = (
+                    db.session.query(
+                        BagQueue.product_type, PendingApproval.status, func.count()
+                    )
+                    .join(PendingApproval,
+                          PendingApproval.bag_queue_id == BagQueue.id)
+                    .group_by(BagQueue.product_type, PendingApproval.status)
+                    .all()
+                )
+                info["approvals"] = [
+                    {"type": r[0], "status": r[1], "count": r[2]} for r in rows
+                ]
+                posts = (
+                    PostLog.query.order_by(PostLog.posted_at.desc()).limit(8).all()
+                )
+                info["recent_posts"] = [
+                    {
+                        "approval_id": p.approval_id,
+                        "fb": p.fb_status, "ig": p.ig_status,
+                        "fb_error": (p.fb_error or "")[:200],
+                        "ig_error": (p.ig_error or "")[:200],
+                        "at": p.posted_at.isoformat() if p.posted_at else None,
+                    }
+                    for p in posts
+                ]
+        except Exception as exc:
+            info["diag_error"] = str(exc)
+
+        # Redact any secrets that may have leaked into log tails / error
+        # strings (e.g. the Telegram token in an httpx request URL).
+        def _redact(blob: str) -> str:
+            import re
+            secrets = []
+            for k, v in os.environ.items():
+                if not v or len(v) < 8:
+                    continue
+                if any(t in k.upper() for t in
+                       ("TOKEN", "KEY", "SECRET", "PASSWORD", "DATABASE_URL")):
+                    secrets.append(v)
+            for v in sorted(set(secrets), key=len, reverse=True):
+                blob = blob.replace(v, "***")
+            blob = re.sub(r"bot\d+:[A-Za-z0-9_-]{20,}", "bot***", blob)
+            blob = re.sub(r"ghp_[A-Za-z0-9]{20,}", "ghp_***", blob)
+            blob = re.sub(r"(?i)(bearer\s+)[A-Za-z0-9._-]{10,}", r"\1***", blob)
+            blob = re.sub(
+                r"(?i)([?&](?:token|key|api_key|secret|password)=)[^&\s\"']+",
+                r"\1***", blob,
+            )
+            return blob
+
+        payload = _redact(_json.dumps(info, indent=2, ensure_ascii=False))
+        return payload, 200, {
             "Content-Type": "application/json; charset=utf-8",
         }
 
