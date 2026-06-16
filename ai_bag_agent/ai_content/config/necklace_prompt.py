@@ -38,11 +38,12 @@ ERASE THE REFERENCE'S NECKLACE COMPLETELY:
 
 THE NECKLACE IS SACRED — IT MUST NOT CHANGE.
 Reproduce the IMAGE 1 necklace exactly:
-- WRAP & LAYERS: the fabric band goes around the neck exactly ONCE — a single
-  layer, fastened/tied at the BACK of the neck, worn the same way as in the
-  on-neck size reference. Do NOT double it, stack it, coil it twice, or show two
-  loops, and do NOT put a big knot at the front. Ignore how any necklace in the
-  REFERENCE (IMAGE 2) was wrapped.
+- WRAP, LAYERS & CLOSURE: the fabric band goes around the neck exactly ONCE — a
+  single layer. The knot / tie / closure MUST be at the BACK of the neck, hidden
+  behind it — NEVER on the side and NEVER at the front. The front and sides show
+  a smooth single band with the charms only; do NOT show the knot, bow, or loose
+  scarf ends at the front or the side. Do NOT double it, stack it, coil it twice,
+  or show two loops. Ignore how any necklace in the REFERENCE (IMAGE 2) was worn.
 - PROPORTIONS & SIZE: keep the true real-world size. The band is relatively thin
   and the shells/charms are small and delicate — do NOT enlarge or thicken them.
   Match the proportions in the product / size-reference images; the necklace must

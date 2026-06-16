@@ -56,25 +56,44 @@ def init_scheduler(flask_app) -> Optional[BackgroundScheduler]:
     morning_minute = int(os.environ.get("MORNING_JOB_MINUTE", "0"))
     evening_hour = int(os.environ.get("EVENING_JOB_HOUR", "20"))
     evening_minute = int(os.environ.get("EVENING_JOB_MINUTE", "0"))
+    # Necklaces post later than bags (default 22:00) so each product type gets
+    # its own slot in the daily feed.
+    necklace_post_hour = int(os.environ.get("NECKLACE_POST_HOUR", "22"))
+    necklace_post_minute = int(os.environ.get("NECKLACE_POST_MINUTE", "0"))
 
     scheduler = BackgroundScheduler(timezone=timezone)
 
+    # Morning: generate one bag AND one necklace → Telegram for approval.
     scheduler.add_job(
         func=_run_morning_in_context,
         trigger=CronTrigger(hour=morning_hour, minute=morning_minute, timezone=timezone),
         args=[flask_app],
         id="morning_generate",
-        name="Daily generate job",
+        name="Daily generate job (bag + necklace)",
         replace_existing=True,
         max_instances=1,
         coalesce=True,
     )
+    # Evening: post approved BAGS.
     scheduler.add_job(
         func=_run_evening_in_context,
         trigger=CronTrigger(hour=evening_hour, minute=evening_minute, timezone=timezone),
         args=[flask_app],
         id="evening_post",
-        name="Daily post job",
+        name="Daily bag post job",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    # Later evening: post approved NECKLACES.
+    scheduler.add_job(
+        func=_run_necklace_post_in_context,
+        trigger=CronTrigger(
+            hour=necklace_post_hour, minute=necklace_post_minute, timezone=timezone
+        ),
+        args=[flask_app],
+        id="necklace_post",
+        name="Daily necklace post job",
         replace_existing=True,
         max_instances=1,
         coalesce=True,
@@ -83,8 +102,10 @@ def init_scheduler(flask_app) -> Optional[BackgroundScheduler]:
     scheduler.start()
     _scheduler = scheduler
     logger.info(
-        "Scheduler started — generate at %02d:%02d, post at %02d:%02d (%s)",
-        morning_hour, morning_minute, evening_hour, evening_minute, timezone,
+        "Scheduler started — generate at %02d:%02d, bag-post at %02d:%02d, "
+        "necklace-post at %02d:%02d (%s)",
+        morning_hour, morning_minute, evening_hour, evening_minute,
+        necklace_post_hour, necklace_post_minute, timezone,
     )
     return scheduler
 
@@ -108,6 +129,7 @@ def next_run_times() -> dict:
     return {
         "morning": jobs.get("morning_generate"),
         "evening": jobs.get("evening_post"),
+        "necklace_post": jobs.get("necklace_post"),
     }
 
 
@@ -116,20 +138,39 @@ def next_run_times() -> dict:
 # ---------------------------------------------------------------------------
 
 def _run_morning_in_context(flask_app) -> None:
+    """Generate one bag AND one necklace. Each is isolated so one failing
+    doesn't stop the other."""
     with flask_app.app_context():
-        from .orchestrator import run_generate_job
+        from .orchestrator import run_generate_job, run_necklace_generate_job
         try:
             result = run_generate_job(tenant_id="default")
-            logger.info("Morning job: %s", result)
+            logger.info("Morning bag job: %s", result)
         except Exception:
-            logger.exception("Morning job crashed")
+            logger.exception("Morning bag job crashed")
+        try:
+            result = run_necklace_generate_job(tenant_id="default")
+            logger.info("Morning necklace job: %s", result)
+        except Exception:
+            logger.exception("Morning necklace job crashed")
 
 
 def _run_evening_in_context(flask_app) -> None:
+    """Post approved BAGS (necklaces post later — see _run_necklace_post)."""
     with flask_app.app_context():
         from .orchestrator import run_post_job
         try:
-            result = run_post_job(tenant_id="default")
-            logger.info("Evening job: %s", result)
+            result = run_post_job(tenant_id="default", product_type="bag")
+            logger.info("Evening bag post job: %s", result)
         except Exception:
-            logger.exception("Evening job crashed")
+            logger.exception("Evening bag post job crashed")
+
+
+def _run_necklace_post_in_context(flask_app) -> None:
+    """Post approved NECKLACES (runs later than the bag post job)."""
+    with flask_app.app_context():
+        from .orchestrator import run_post_job
+        try:
+            result = run_post_job(tenant_id="default", product_type="necklace")
+            logger.info("Necklace post job: %s", result)
+        except Exception:
+            logger.exception("Necklace post job crashed")

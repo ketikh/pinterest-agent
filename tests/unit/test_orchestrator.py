@@ -275,3 +275,84 @@ class TestRunPostJob:
 
         assert result["success"] is False
         assert result["failed_count"] == 1
+
+    def test_product_type_filter_posts_only_matching(self, flask_app):
+        from ai_bag_agent.extensions import db
+        from ai_bag_agent.ai_content.models import BagQueue, PendingApproval
+
+        bagq = BagQueue(bag_name="B", image_path="https://b.jpg",
+                        product_type="bag", status="done", sort_order=1)
+        neck = BagQueue(bag_name="N", image_path="https://n.jpg",
+                        product_type="necklace", status="done", sort_order=2)
+        db.session.add_all([bagq, neck])
+        db.session.commit()
+        ab = PendingApproval(tenant_id="default", bag_queue_id=bagq.id,
+                             generated_image_url="https://b/y.jpg", status="approved")
+        an = PendingApproval(tenant_id="default", bag_queue_id=neck.id,
+                             generated_image_url="https://n/y.jpg", status="approved")
+        db.session.add_all([ab, an])
+        db.session.commit()
+        neck_approval_id = an.id
+
+        with patch.object(orchestrator.social_poster, "post_to_both") as posty:
+            posty.return_value = {
+                "success": True, "fb_status": "success", "ig_status": "success",
+                "fb_post_id": "f", "ig_post_id": "i", "error": None, "post_log_id": 1,
+            }
+            result = orchestrator.run_post_job(product_type="necklace")
+
+        assert result["posted_count"] == 1
+        posty.assert_called_once_with(neck_approval_id, tenant_id="default")
+
+
+# ---------------------------------------------------------------------------
+# run_necklace_generate_job
+# ---------------------------------------------------------------------------
+
+class TestRunNecklaceGenerateJob:
+    def test_empty_inspirations_returns_error(self, flask_app):
+        with patch("ai_bag_agent.ai_content.services.inspirations_client.list_inspirations",
+                   return_value=[]):
+            result = orchestrator.run_necklace_generate_job()
+        assert result["success"] is False
+        assert "necklace" in result["error"].lower() or "gallery" in result["error"].lower()
+
+    def test_pulls_necklace_from_inspirations(self, flask_app):
+        items = [{"id": 7, "category": "necklace",
+                  "image_url": "https://c/n.jpg", "caption": "", "position": 1}]
+        with patch("ai_bag_agent.ai_content.services.inspirations_client.list_inspirations",
+                   return_value=items), \
+             patch.object(orchestrator.pinterest_client, "get_random_pin",
+                          return_value={"success": True, "image_url": "https://p.jpg",
+                                        "pin_id": "p1", "error": None}), \
+             patch.object(orchestrator.ai_generator, "generate_image",
+                          return_value={"success": True, "generated_url": "https://k.png",
+                                        "local_path": None, "prompt_used": "p", "error": None}), \
+             patch.object(orchestrator, "send_approval_request_sync", return_value="55"):
+            result = orchestrator.run_necklace_generate_job()
+
+        assert result["success"] is True
+        from ai_bag_agent.ai_content.models import BagQueue
+        bag = BagQueue.query.get(result["bag_id"])
+        assert bag.product_type == "necklace"
+        assert bag.image_path == "https://c/n.jpg"
+        assert bag.bag_name == "Necklace #7"
+        assert bag.status == "done"
+
+    def test_necklace_uses_jewelry_board(self, flask_app):
+        items = [{"id": 9, "image_url": "https://c/n.jpg", "caption": "Blue", "position": 1}]
+        with patch.dict("os.environ", {"PINTEREST_BOARD_URL_JEWELRY": "https://pin/jewelry"}), \
+             patch("ai_bag_agent.ai_content.services.inspirations_client.list_inspirations",
+                   return_value=items), \
+             patch.object(orchestrator.pinterest_client, "get_random_pin") as pin, \
+             patch.object(orchestrator.ai_generator, "generate_image",
+                          return_value={"success": True, "generated_url": "https://k.png",
+                                        "local_path": None, "prompt_used": "p", "error": None}), \
+             patch.object(orchestrator, "send_approval_request_sync", return_value="1"):
+            pin.return_value = {"success": True, "image_url": "https://p.jpg",
+                                "pin_id": "p1", "error": None}
+            orchestrator.run_necklace_generate_job()
+
+        # The jewelry board URL (not the bag board) must be used for necklaces.
+        _, kwargs = pin.call_args
+        assert kwargs.get("board_url") == "https://pin/jewelry"

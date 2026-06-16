@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import os
+import random
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -112,6 +113,87 @@ def _pull_bag_from_inventory(tenant_id: str = "default") -> Optional[BagQueue]:
     logger.info(
         "Pulled bag from inventory: storefront #%s «%s» (back=%s) → BagQueue #%s",
         product.get("id"), product["name"], bool(back), bag.id,
+    )
+    return bag
+
+
+# ---------------------------------------------------------------------------
+# Necklace generate pipeline (parallel to bags — sources from inspirations API)
+# ---------------------------------------------------------------------------
+
+def run_necklace_generate_job(tenant_id: str = "default") -> dict:
+    """Pick the next necklace and run the full generation pipeline.
+
+    Resolution order:
+      1. A pending necklace manually queued by admin (Necklaces page).
+      2. A necklace auto-pulled from the storefront inspirations gallery.
+
+    Returns: {success, bag_id, approval_id, error}
+    """
+    bag = (
+        BagQueue.query
+        .filter_by(status="pending", tenant_id=tenant_id, product_type="necklace")
+        .order_by(BagQueue.sort_order.asc(), BagQueue.created_at.asc())
+        .first()
+    )
+    if bag is None:
+        bag = _pull_necklace_from_inspirations(tenant_id)
+
+    if bag is None:
+        logger.info("Necklace generate job: nothing to do for tenant=%s", tenant_id)
+        return {
+            "success": False, "bag_id": None, "approval_id": None,
+            "error": "No necklaces in queue and inspirations gallery is empty",
+        }
+
+    return _run_pipeline_for_bag(bag)
+
+
+def _pull_necklace_from_inspirations(tenant_id: str = "default") -> Optional[BagQueue]:
+    """Pick a necklace from the storefront inspirations gallery and queue it.
+
+    Skips necklaces used in the last RECENT_INVENTORY_DAYS so the daily feed
+    doesn't repeat. Auto-pulled necklaces have no on-neck size photo, so the
+    pipeline generates from the product photo alone. Returns the created
+    BagQueue row, or None when the gallery returns nothing usable.
+    """
+    from .inspirations_client import list_inspirations
+
+    items = list_inspirations(category="necklace")
+    if not items:
+        return None
+
+    def _name_of(item: dict) -> str:
+        caption = (item.get("caption") or "").strip()
+        return caption or f"Necklace #{item.get('id')}"
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=RECENT_INVENTORY_DAYS)
+    recent_names = {
+        r.bag_name for r in BagQueue.query.filter(
+            BagQueue.tenant_id == tenant_id,
+            BagQueue.product_type == "necklace",
+            BagQueue.created_at >= cutoff,
+        ).all()
+    }
+
+    fresh = [it for it in items if _name_of(it) not in recent_names]
+    pool = fresh or items  # fall back to all once every necklace was used recently
+    choice = random.choice(pool)
+
+    bag = BagQueue(
+        tenant_id=tenant_id,
+        product_type="necklace",
+        bag_name=_name_of(choice),
+        image_path=choice["image_url"],
+        image_path_open=None,  # no on-neck size photo in auto mode
+        status="pending",
+        sort_order=0,
+    )
+    db.session.add(bag)
+    db.session.commit()
+    logger.info(
+        "Pulled necklace from inspirations: #%s «%s» → BagQueue #%s",
+        choice.get("id"), bag.bag_name, bag.id,
     )
     return bag
 
@@ -378,17 +460,21 @@ def _fail(bag: BagQueue, error: str) -> dict:
 # Post pipeline
 # ---------------------------------------------------------------------------
 
-def run_post_job(tenant_id: str = "default") -> dict:
-    """Post all approved-but-not-yet-posted approvals to FB + IG.
+def run_post_job(tenant_id: str = "default", product_type: Optional[str] = None) -> dict:
+    """Post approved-but-not-yet-posted approvals to FB + IG.
+
+    `product_type` ("bag" | "necklace") limits the run to one product type so
+    bags and necklaces can post at different times. None posts everything.
 
     Returns: {success, posted_count, failed_count, results}
     """
-    approvals = (
-        PendingApproval.query
-        .filter_by(status="approved", tenant_id=tenant_id)
-        .order_by(PendingApproval.created_at.asc())
-        .all()
-    )
+    query = PendingApproval.query.filter_by(status="approved", tenant_id=tenant_id)
+    if product_type:
+        query = (
+            query.join(BagQueue, PendingApproval.bag_queue_id == BagQueue.id)
+            .filter(BagQueue.product_type == product_type)
+        )
+    approvals = query.order_by(PendingApproval.created_at.asc()).all()
     if not approvals:
         logger.info("Post job: no approved approvals for tenant=%s", tenant_id)
         return {"success": True, "posted_count": 0, "failed_count": 0, "results": []}
