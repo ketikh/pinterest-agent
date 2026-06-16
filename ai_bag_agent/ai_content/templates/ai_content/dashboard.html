@@ -241,7 +241,14 @@
               onsubmit="return confirm('გავუშვა Generate Job?')">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn btn-warning btn-sm">
-            <i class="bi bi-play-fill"></i> Run Generate Job
+            <i class="bi bi-play-fill"></i> Generate Bag
+          </button>
+        </form>
+        <form method="POST" action="{{ url_for('ai_content.jobs_run_necklace_generate') }}"
+              onsubmit="return confirm('გავუშვა ყელსაბამის გენერაცია?')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-warning btn-sm">
+            <i class="bi bi-gem"></i> Generate Necklace
           </button>
         </form>
         <form method="POST" action="{{ url_for('ai_content.jobs_run_post') }}"

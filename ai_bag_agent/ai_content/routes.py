@@ -396,6 +396,25 @@ def necklaces_regenerate(bag_id: int):
     return redirect(url_for("ai_content.necklaces"))
 
 
+@ai_content_bp.route("/jobs/run-necklace-generate", methods=["POST"])
+@login_required
+def jobs_run_necklace_generate():
+    """Auto-pick a necklace from the inspirations gallery and generate it now.
+
+    The necklace equivalent of the bag 'Run Generate Job' button.
+    """
+    def _run(_app):
+        from .services.orchestrator import run_necklace_generate_job
+        run_necklace_generate_job(tenant_id="default")
+
+    _start_async(_run)
+    flash(
+        "⏳ ყელსაბამის გენერაცია დაიწყო — ფოტო Telegram-ში მოვა ~60–180 წამში.",
+        "info",
+    )
+    return redirect(request.referrer or url_for("ai_content.necklaces"))
+
+
 # ---------------------------------------------------------------------------
 # Approvals
 # ---------------------------------------------------------------------------
