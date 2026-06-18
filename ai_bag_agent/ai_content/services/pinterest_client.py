@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import logging
 import os
-import random
 import re
 import time
 from datetime import datetime, timedelta, timezone
@@ -202,14 +201,24 @@ def get_random_pin(
         cleanup_old_cache(days=0)  # clear all cache for this tenant
         filtered = pins
 
-    chosen = random.choice(filtered)
+    # Pick the next reference in DATE order (newest first) instead of at random,
+    # so references advance sequentially and an already-used / old pin isn't
+    # re-shown until the whole board has been cycled. Skip pins with no image.
+    filtered.sort(key=lambda p: (p.get("created_at") or ""), reverse=True)
+    chosen = None
+    image_url = None
+    for candidate in filtered:
+        try:
+            image_url = get_best_image_url(candidate)
+        except ValueError:
+            continue
+        chosen = candidate
+        break
+
+    if chosen is None:
+        return _err("No pin with a usable image URL on the board")
+
     pin_id = chosen["id"]
-
-    try:
-        image_url = get_best_image_url(chosen)
-    except ValueError:
-        return _err(f"Pin {pin_id} has no usable image URL")
-
     # Convert WebP to JPG for kie.ai compatibility
     image_url = _to_jpg_url(image_url)
 
