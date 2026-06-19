@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ai_bag_agent.ai_content.config.video_prompt import (
+    _BAG_STYLES,
     BAG_VIDEO_SUFFIX,
     VIDEO_STYLES,
     VIDEO_SUFFIX,
@@ -66,20 +67,24 @@ class TestBuildVideoPrompt:
 
 class TestBuildBagVideoPrompt:
     def test_ends_with_bag_suffix(self):
-        for key in VIDEO_STYLES:
+        for key in _BAG_STYLES:
             assert build_bag_video_prompt(style=key)["prompt"].endswith(BAG_VIDEO_SUFFIX)
 
     def test_protects_pattern_and_label(self):
-        p = build_bag_video_prompt(style="A")["prompt"]
+        p = build_bag_video_prompt(style="p")["prompt"]
         assert "TISSU label" in p and "fabric pattern" in p
 
+    def test_no_logo_zoom_or_flicker(self):
+        p = build_bag_video_prompt(style="p")["prompt"]
+        assert "no zoom" in p and "no flicker" in p
+
     def test_max_60_words(self):
-        for key in VIDEO_STYLES:
+        for key in _BAG_STYLES:
             words = build_bag_video_prompt(style=key)["prompt"].split()
             assert len(words) <= 60, f"{key} had {len(words)} words"
 
     def test_never_repeats_previous_style(self):
-        for prev in VIDEO_STYLES:
+        for prev in _BAG_STYLES:
             for _ in range(20):
                 assert build_bag_video_prompt(previous_style=prev)["style"] != prev
 

@@ -77,11 +77,11 @@ def build_video_prompt(
     return {"style": key, "prompt": prompt}
 
 
-def _pick_style(previous_style: Optional[str]) -> str:
-    """Pick a random style key, never the one used last time."""
-    choices = [k for k in VIDEO_STYLES if k != previous_style]
+def _pick_style(previous_style: Optional[str], styles: dict = VIDEO_STYLES) -> str:
+    """Pick a random key from `styles`, never the one used last time."""
+    choices = [k for k in styles if k != previous_style]
     if not choices:  # previous_style was invalid/None-proof — use full bank
-        choices = list(VIDEO_STYLES)
+        choices = list(styles)
     return random.choice(choices)
 
 
@@ -89,12 +89,20 @@ def _pick_style(previous_style: Optional[str]) -> str:
 # Bags / sleeves (TISSU) — separate prompt; protects fabric pattern + label
 # ---------------------------------------------------------------------------
 
-_BAG_FABRIC = "soft light glides over the fabric and seams"
-# Safe, scene-agnostic minimal motion (no vision scene detection yet) — works
-# whether the bag is held, resting, propped, or outdoors.
+# Logo-safe camera bank: NO push-in and NO "shimmer/breathing light" — those
+# zoomed onto the (mis-rendered) TISSU label and caused harsh light flicker.
+_BAG_STYLES = {
+    "p": "gentle left-to-right parallax, clean daylight, crisp editorial mood",
+    "b": "slow pull-back reveal, soft diffused light, airy elegant mood",
+    "d": "subtle slow drift, soft warm light, relaxed lifestyle mood",
+    "s": "near-static frame, soft steady light, shallow depth of field",
+}
+# Steady light (no flicker/strobe), gentle motion in the surroundings, and the
+# camera never zooms onto the logo (where the text mis-renders).
 _BAG_MOTION = (
-    "bag stays stable, subtle light drift, slow camera move; any visible person "
-    "only micro-motion, hands stable"
+    "bag stays still; soft steady light glides over the fabric, no flicker or "
+    "strobe; gentle motion only in the surroundings; wide slow camera, no zoom "
+    "onto the logo"
 )
 BAG_VIDEO_SUFFIX = (
     "photorealistic, soft natural lighting, keep bag shape, fabric pattern and "
@@ -105,15 +113,12 @@ BAG_VIDEO_SUFFIX = (
 def build_bag_video_prompt(
     previous_style: Optional[str] = None, style: Optional[str] = None,
 ) -> dict:
-    """Bag/sleeve motion prompt. Keeps the fabric pattern + TISSU label stable.
-
-    Uses safe minimal motion (scene auto-detection would need vision). Returns
+    """Bag/sleeve motion prompt. Keeps the fabric pattern + TISSU label stable,
+    avoids zooming on the logo, and uses steady (non-flickering) light. Returns
     {"style": <key>, "prompt": <one-line text>}.
     """
-    key = style if style in VIDEO_STYLES else _pick_style(previous_style)
-    prompt = (
-        f"{VIDEO_STYLES[key]}; {_BAG_FABRIC}; {_BAG_MOTION}; {BAG_VIDEO_SUFFIX}"
-    )
+    key = style if style in _BAG_STYLES else _pick_style(previous_style, _BAG_STYLES)
+    prompt = f"{_BAG_STYLES[key]}; {_BAG_MOTION}; {BAG_VIDEO_SUFFIX}"
     return {"style": key, "prompt": prompt}
 
 
