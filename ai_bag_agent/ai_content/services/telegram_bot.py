@@ -172,6 +172,28 @@ def send_approval_request_sync(
         return None
 
 
+def send_video_sync(
+    approval_id: int, video_url: str, style: str = "?", timeout: int = 600,
+) -> bool:
+    """Push a generated video to TELEGRAM_CHAT_ID from any thread.
+
+    Used by the web "Generate Video" button (the bot's own flow calls
+    _send_video directly on its loop). Returns True on success.
+    """
+    if _bot_loop is None:
+        logger.error("Telegram bot not initialized — can't send video")
+        return False
+    future = asyncio.run_coroutine_threadsafe(
+        _send_video(video_url, approval_id, style), _bot_loop,
+    )
+    try:
+        future.result(timeout=timeout)
+        return True
+    except Exception:
+        logger.exception("send_video_sync failed for #%s", approval_id)
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Async core — send + callbacks
 # ---------------------------------------------------------------------------
@@ -440,10 +462,11 @@ async def _run_video_generation(approval_id: int) -> None:
         ))
         return
 
-    if not result or not result.get("video_url"):
+    if not result or not result.get("success"):
+        err = _truncate(str((result or {}).get("error") or "no result"), 200)
         await _with_retry(lambda: _application.bot.send_message(
             chat_id=_TELEGRAM_CHAT_ID,
-            text=f"⚠️ Video generation finished with no video for #{approval_id}.",
+            text=f"⚠️ Video generation failed for #{approval_id}: {err}",
         ))
         return
 
@@ -451,31 +474,10 @@ async def _run_video_generation(approval_id: int) -> None:
 
 
 def _blocking_generate_video(approval_id: int) -> dict:
-    """Synchronous: load approval, build prompt, call Seedance, persist result."""
-    from ..config.video_prompt import build_video_prompt
-    from ..models import PendingApproval
-    from ...extensions import db
-    from .video_generator import generate_video
-
+    """Synchronous core — delegates to the orchestrator within an app context."""
+    from .orchestrator import generate_video_for_approval
     with _flask_app.app_context():
-        a = db.session.get(PendingApproval, approval_id)
-        if a is None or not a.generated_image_url:
-            return {}
-        image_url = a.generated_image_url
-        previous_style = a.video_style
-
-    prompt_data = build_video_prompt(previous_style=previous_style, worn=True)
-    gen = generate_video(image_url, prompt_data["prompt"])
-    if not gen["success"]:
-        raise RuntimeError(gen.get("error") or "Seedance returned no result")
-
-    with _flask_app.app_context():
-        a = db.session.get(PendingApproval, approval_id)
-        if a is not None:
-            a.video_url = gen["video_url"]
-            a.video_style = prompt_data["style"]
-            db.session.commit()
-    return {"video_url": gen["video_url"], "style": prompt_data["style"]}
+        return generate_video_for_approval(approval_id)
 
 
 def _approve_if_pending(approval_id: int) -> None:

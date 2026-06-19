@@ -460,6 +460,37 @@ def _fail(bag: BagQueue, error: str) -> dict:
 # Post pipeline
 # ---------------------------------------------------------------------------
 
+def generate_video_for_approval(approval_id: int, tenant_id: str = "default") -> dict:
+    """Build a motion prompt, run Seedance, and persist video_url + style.
+
+    Assumes an active Flask app context. Does NOT deliver the video — the
+    caller sends it to Telegram, so this is shared by the bot button and the
+    web "Generate Video" button. Returns {success, video_url, style, error}.
+    """
+    from ..config.video_prompt import build_video_prompt
+    from .video_generator import generate_video
+
+    approval = db.session.get(PendingApproval, approval_id)
+    if approval is None or not approval.generated_image_url:
+        return {"success": False, "error": "Approval or image not found"}
+
+    prompt_data = build_video_prompt(previous_style=approval.video_style, worn=True)
+    gen = generate_video(
+        approval.generated_image_url, prompt_data["prompt"], tenant_id=tenant_id,
+    )
+    if not gen["success"]:
+        return {"success": False, "error": gen.get("error") or "Seedance failed"}
+
+    approval.video_url = gen["video_url"]
+    approval.video_style = prompt_data["style"]
+    db.session.commit()
+    return {
+        "success": True,
+        "video_url": gen["video_url"],
+        "style": prompt_data["style"],
+    }
+
+
 def run_post_job(tenant_id: str = "default", product_type: Optional[str] = None) -> dict:
     """Post approved-but-not-yet-posted approvals to FB + IG.
 

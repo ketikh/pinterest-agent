@@ -55,6 +55,21 @@
           </form>
         {% endif %}
       </div>
+      <form method="POST" action="{{ url_for('ai_content.approval_generate_video', approval_id=a.id) }}"
+            class="mb-2"
+            onsubmit="return confirm('ვიდეო დავაგენერირო #{{ a.id }}-სთვის? Telegram-ში მოვა ~1-3 წუთში.')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-sm btn-outline-dark w-100">
+          <i class="bi bi-camera-reels"></i>
+          {{ '🔄 Regenerate video' if a.video_url else '🎬 Generate Video' }}
+        </button>
+      </form>
+      {% if a.video_url %}
+        <a href="{{ a.video_url }}" target="_blank" rel="noopener"
+           class="btn btn-sm btn-success w-100 mb-2">
+          <i class="bi bi-play-circle"></i> ნახე ვიდეო
+        </a>
+      {% endif %}
       {% if a.post_log and a.post_log.fb_status == 'failed' %}
         <form method="POST" action="{{ url_for('ai_content.approval_retry_fb', approval_id=a.id) }}"
               class="mb-2">

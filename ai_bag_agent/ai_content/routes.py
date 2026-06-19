@@ -533,6 +533,28 @@ def approval_regenerate(approval_id: int):
     return redirect(request.referrer or url_for("ai_content.dashboard"))
 
 
+@ai_content_bp.route("/approvals/<int:approval_id>/generate-video", methods=["POST"])
+@login_required
+def approval_generate_video(approval_id: int):
+    """Generate (or regenerate) a Seedance video for this approval from the web.
+    Runs in the background; the result is sent to Telegram and saved on the row."""
+    approval = PendingApproval.query.get_or_404(approval_id)
+    if not approval.generated_image_url:
+        flash("ამ ჩანაწერს ფოტო არ აქვს.", "warning")
+        return redirect(request.referrer or url_for("ai_content.approvals"))
+
+    def _run(_app):
+        from .services.orchestrator import generate_video_for_approval
+        from .services.telegram_bot import send_video_sync
+        result = generate_video_for_approval(approval_id)
+        if result.get("success"):
+            send_video_sync(approval_id, result["video_url"], result.get("style", "?"))
+
+    _start_async(_run)
+    flash("⏳ ვიდეო გენერირდება — მზად რომ იქნება, Telegram-ში მოვა (~1-3 წთ).", "info")
+    return redirect(request.referrer or url_for("ai_content.approvals"))
+
+
 @ai_content_bp.route("/approvals/<int:approval_id>/edit", methods=["GET", "POST"])
 @login_required
 def approval_edit(approval_id: int):
