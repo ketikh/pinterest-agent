@@ -30,12 +30,13 @@ VIDEO_STYLES = {
 # Necklace must always catch light; product stays stable.
 _NECKLACE_LIGHT = (
     "necklace catches light with soft shimmer and gentle highlights on metal, "
-    "stones, and charms, pendants swaying faintly"
+    "stones, and charms"
 )
+# Keep the product identical — Seedance must not invent extra dangling pieces.
+_NO_EXTRAS = "add no extra threads, ribbons, or tails"
 # Worn shot → only micro-motion on the person. Flat-lay → animate light only.
 _WORN_MOTION = (
-    "model still, only micro-motion: soft breeze in hair, faint smile, hands "
-    "and face stable"
+    "model still, only micro-motion: soft breeze in hair, faint smile"
 )
 _FLATLAY_MOTION = "animate only light, soft shadows, and the camera move"
 
@@ -64,8 +65,12 @@ def build_video_prompt(
     key = style if style in VIDEO_STYLES else _pick_style(previous_style)
     opener = VIDEO_STYLES[key]
     motion = _WORN_MOTION if worn else _FLATLAY_MOTION
-    # "seamless loop" so the clip can be looped (GIF / Reels / Stories).
-    prompt = f"{opener}; {_NECKLACE_LIGHT}; {motion}; seamless loop; {VIDEO_SUFFIX}"
+    # _NO_EXTRAS stops Seedance inventing dangling threads/ribbons; "seamless
+    # loop" lets the clip be looped (GIF / Reels / Stories).
+    prompt = (
+        f"{opener}; {_NECKLACE_LIGHT}; {motion}; {_NO_EXTRAS}; "
+        f"seamless loop; {VIDEO_SUFFIX}"
+    )
     return {"style": key, "prompt": prompt}
 
 
