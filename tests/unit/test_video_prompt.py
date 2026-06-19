@@ -20,12 +20,18 @@ class TestBuildVideoPrompt:
                 out = build_video_prompt(style=key, worn=worn)
                 assert out["prompt"].endswith(VIDEO_SUFFIX)
 
-    def test_max_60_words(self):
+    def test_prompt_length_bounded(self):
+        # Kept reasonably short for the video model (relaxed from the original
+        # 60 as fidelity rules — eyes-open, no-extras, loop — were added).
         for key in VIDEO_STYLES:
             for worn in (True, False):
                 out = build_video_prompt(style=key, worn=worn)
                 words = out["prompt"].split()
-                assert len(words) <= 60, f"{key}/{worn} had {len(words)} words"
+                assert len(words) <= 75, f"{key}/{worn} had {len(words)} words"
+
+    def test_keeps_eyes_open(self):
+        out = build_video_prompt(style="A", worn=True)["prompt"]
+        assert "eyes open" in out
 
     def test_never_repeats_previous_style(self):
         for prev in VIDEO_STYLES:
