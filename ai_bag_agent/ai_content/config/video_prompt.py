@@ -83,3 +83,45 @@ def _pick_style(previous_style: Optional[str]) -> str:
     if not choices:  # previous_style was invalid/None-proof — use full bank
         choices = list(VIDEO_STYLES)
     return random.choice(choices)
+
+
+# ---------------------------------------------------------------------------
+# Bags / sleeves (TISSU) — separate prompt; protects fabric pattern + label
+# ---------------------------------------------------------------------------
+
+_BAG_FABRIC = "soft light glides over the fabric and seams"
+# Safe, scene-agnostic minimal motion (no vision scene detection yet) — works
+# whether the bag is held, resting, propped, or outdoors.
+_BAG_MOTION = (
+    "bag stays stable, subtle light drift, slow camera move; any visible person "
+    "only micro-motion, hands stable"
+)
+BAG_VIDEO_SUFFIX = (
+    "photorealistic, soft natural lighting, keep bag shape, fabric pattern and "
+    "TISSU label stable, no distortion, no morphing, no warping text."
+)
+
+
+def build_bag_video_prompt(
+    previous_style: Optional[str] = None, style: Optional[str] = None,
+) -> dict:
+    """Bag/sleeve motion prompt. Keeps the fabric pattern + TISSU label stable.
+
+    Uses safe minimal motion (scene auto-detection would need vision). Returns
+    {"style": <key>, "prompt": <one-line text>}.
+    """
+    key = style if style in VIDEO_STYLES else _pick_style(previous_style)
+    prompt = (
+        f"{VIDEO_STYLES[key]}; {_BAG_FABRIC}; {_BAG_MOTION}; {BAG_VIDEO_SUFFIX}"
+    )
+    return {"style": key, "prompt": prompt}
+
+
+def build_video_prompt_for(
+    product_type: str, previous_style: Optional[str] = None,
+    style: Optional[str] = None,
+) -> dict:
+    """Route to the right builder by product type (necklace vs bag)."""
+    if product_type == "bag":
+        return build_bag_video_prompt(previous_style=previous_style, style=style)
+    return build_video_prompt(previous_style=previous_style, worn=True, style=style)

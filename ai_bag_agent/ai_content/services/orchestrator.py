@@ -467,14 +467,18 @@ def generate_video_for_approval(approval_id: int, tenant_id: str = "default") ->
     caller sends it to Telegram, so this is shared by the bot button and the
     web "Generate Video" button. Returns {success, video_url, style, error}.
     """
-    from ..config.video_prompt import build_video_prompt
+    from ..config.video_prompt import build_video_prompt_for
     from .video_generator import generate_video
 
     approval = db.session.get(PendingApproval, approval_id)
     if approval is None or not approval.generated_image_url:
         return {"success": False, "error": "Approval or image not found"}
 
-    prompt_data = build_video_prompt(previous_style=approval.video_style, worn=True)
+    # Necklace vs bag get different motion prompts.
+    product_type = approval.bag.product_type if approval.bag else "necklace"
+    prompt_data = build_video_prompt_for(
+        product_type, previous_style=approval.video_style,
+    )
     gen = generate_video(
         approval.generated_image_url, prompt_data["prompt"], tenant_id=tenant_id,
     )

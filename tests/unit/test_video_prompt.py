@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from ai_bag_agent.ai_content.config.video_prompt import (
+    BAG_VIDEO_SUFFIX,
     VIDEO_STYLES,
     VIDEO_SUFFIX,
+    build_bag_video_prompt,
     build_video_prompt,
+    build_video_prompt_for,
 )
 
 
@@ -59,3 +62,34 @@ class TestBuildVideoPrompt:
     def test_prompt_is_loop_friendly(self):
         for key in VIDEO_STYLES:
             assert "seamless loop" in build_video_prompt(style=key)["prompt"]
+
+
+class TestBuildBagVideoPrompt:
+    def test_ends_with_bag_suffix(self):
+        for key in VIDEO_STYLES:
+            assert build_bag_video_prompt(style=key)["prompt"].endswith(BAG_VIDEO_SUFFIX)
+
+    def test_protects_pattern_and_label(self):
+        p = build_bag_video_prompt(style="A")["prompt"]
+        assert "TISSU label" in p and "fabric pattern" in p
+
+    def test_max_60_words(self):
+        for key in VIDEO_STYLES:
+            words = build_bag_video_prompt(style=key)["prompt"].split()
+            assert len(words) <= 60, f"{key} had {len(words)} words"
+
+    def test_never_repeats_previous_style(self):
+        for prev in VIDEO_STYLES:
+            for _ in range(20):
+                assert build_bag_video_prompt(previous_style=prev)["style"] != prev
+
+
+class TestDispatcher:
+    def test_bag_routes_to_bag_builder(self):
+        out = build_video_prompt_for("bag", style="A")
+        assert out["prompt"].endswith(BAG_VIDEO_SUFFIX)
+
+    def test_necklace_routes_to_necklace_builder(self):
+        out = build_video_prompt_for("necklace", style="A")
+        assert out["prompt"].endswith(VIDEO_SUFFIX)
+        assert "seamless loop" in out["prompt"]
