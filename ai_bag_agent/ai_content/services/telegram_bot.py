@@ -324,6 +324,10 @@ async def _handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await _handle_edit_caption_request(query, approval_id, context)
     elif action == "postnow":
         await _handle_post_now(query, approval_id)
+    elif action == "video":
+        await _handle_generate_video(query, approval_id)
+    elif action == "revideo":
+        await _handle_regenerate_video(query, approval_id)
     else:
         await query.answer("Unknown action", show_alert=True)
 
@@ -399,6 +403,114 @@ def _blocking_post_now(approval_id: int) -> dict:
             db.session.commit()
         tenant_id = a.tenant_id
     return post_to_both(approval_id, tenant_id=tenant_id)
+
+
+# ---------------------------------------------------------------------------
+# Video generation (Seedance) — "🎬 Generate Video" / "🔄 Regenerate video"
+# ---------------------------------------------------------------------------
+
+async def _handle_generate_video(query, approval_id: int) -> None:
+    """🎬 Approve the photo (if needed) and start video generation."""
+    await query.answer("🎬 Generating video…")
+    await asyncio.to_thread(_approve_if_pending, approval_id)
+    await _with_retry(lambda: query.edit_message_caption(
+        caption=_append_status(query.message.caption, "🎬 Generating video… (1–3 min)"),
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=None,
+    ))
+    asyncio.create_task(_run_video_generation(approval_id))
+
+
+async def _handle_regenerate_video(query, approval_id: int) -> None:
+    """🔄 Regenerate the video with a fresh motion style."""
+    await query.answer("🔄 Regenerating video…")
+    asyncio.create_task(_run_video_generation(approval_id))
+
+
+async def _run_video_generation(approval_id: int) -> None:
+    """Background: build prompt → Seedance → send video to chat (or report error)."""
+    try:
+        result = await asyncio.to_thread(_blocking_generate_video, approval_id)
+    except Exception as exc:
+        error_text = _truncate(str(exc), 200)
+        logger.exception("Video generation failed for #%s", approval_id)
+        await _with_retry(lambda: _application.bot.send_message(
+            chat_id=_TELEGRAM_CHAT_ID,
+            text=f"❌ Video generation failed for #{approval_id}: {error_text}",
+        ))
+        return
+
+    if not result or not result.get("video_url"):
+        await _with_retry(lambda: _application.bot.send_message(
+            chat_id=_TELEGRAM_CHAT_ID,
+            text=f"⚠️ Video generation finished with no video for #{approval_id}.",
+        ))
+        return
+
+    await _send_video(result["video_url"], approval_id, result.get("style", "?"))
+
+
+def _blocking_generate_video(approval_id: int) -> dict:
+    """Synchronous: load approval, build prompt, call Seedance, persist result."""
+    from ..config.video_prompt import build_video_prompt
+    from ..models import PendingApproval
+    from ...extensions import db
+    from .video_generator import generate_video
+
+    with _flask_app.app_context():
+        a = db.session.get(PendingApproval, approval_id)
+        if a is None or not a.generated_image_url:
+            return {}
+        image_url = a.generated_image_url
+        previous_style = a.video_style
+
+    prompt_data = build_video_prompt(previous_style=previous_style, worn=True)
+    gen = generate_video(image_url, prompt_data["prompt"])
+    if not gen["success"]:
+        raise RuntimeError(gen.get("error") or "Seedance returned no result")
+
+    with _flask_app.app_context():
+        a = db.session.get(PendingApproval, approval_id)
+        if a is not None:
+            a.video_url = gen["video_url"]
+            a.video_style = prompt_data["style"]
+            db.session.commit()
+    return {"video_url": gen["video_url"], "style": prompt_data["style"]}
+
+
+def _approve_if_pending(approval_id: int) -> None:
+    from ..models import PendingApproval
+    from ...extensions import db
+    with _flask_app.app_context():
+        a = db.session.get(PendingApproval, approval_id)
+        if a is not None and a.status == "pending":
+            a.status = "approved"
+            a.responded_at = datetime.now(timezone.utc)
+            db.session.commit()
+
+
+async def _send_video(video_url: str, approval_id: int, style: str) -> None:
+    """Send the generated video to the chat with a regenerate button."""
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton(
+            "🔄 Regenerate video", callback_data=f"revideo_{approval_id}",
+        ),
+    ]])
+    sent = await _with_retry(lambda: _application.bot.send_video(
+        chat_id=_TELEGRAM_CHAT_ID,
+        video=video_url,
+        caption=f"🎬 *Video ready* for #{approval_id}  ·  style {style}",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=keyboard,
+    ))
+    if sent is None:
+        # send_video can fail on large/slow URLs — fall back to a link.
+        await _with_retry(lambda: _application.bot.send_message(
+            chat_id=_TELEGRAM_CHAT_ID,
+            text=(f"🎬 Video ready for #{approval_id} (style {style}) but couldn't "
+                  f"upload to Telegram.\n{video_url}"),
+            reply_markup=keyboard,
+        ))
 
 
 async def _handle_edit_caption_request(query, approval_id: int, context) -> None:
@@ -893,6 +1005,12 @@ def _build_keyboard(approval_id: int, regen_count: int) -> InlineKeyboardMarkup:
         InlineKeyboardButton(
             "🚀 Post now",
             callback_data=f"postnow_{approval_id}",
+        ),
+    ])
+    buttons.append([
+        InlineKeyboardButton(
+            "🎬 Generate Video",
+            callback_data=f"video_{approval_id}",
         ),
     ])
     return InlineKeyboardMarkup(buttons)

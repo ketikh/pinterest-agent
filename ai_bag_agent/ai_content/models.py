@@ -98,6 +98,11 @@ class PendingApproval(db.Model):
     fb_caption: Optional[str] = db.Column(db.Text, nullable=True)
     ig_caption: Optional[str] = db.Column(db.Text, nullable=True)
 
+    # Seedance image-to-video generated from the approved photo.
+    # video_style stores the last motion style so a regen avoids repeating it.
+    video_url: Optional[str] = db.Column(db.Text, nullable=True)
+    video_style: Optional[str] = db.Column(db.String(8), nullable=True)
+
     telegram_message_id: Optional[str] = db.Column(db.String(64), nullable=True, index=True)
     status: str = db.Column(
         db.String(32), nullable=False, default="pending", index=True
