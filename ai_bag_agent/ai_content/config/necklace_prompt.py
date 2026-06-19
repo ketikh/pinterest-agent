@@ -38,12 +38,14 @@ ERASE THE REFERENCE'S NECKLACE COMPLETELY:
 
 THE NECKLACE IS SACRED — IT MUST NOT CHANGE.
 Reproduce the IMAGE 1 necklace exactly:
-- WRAP, LAYERS & CLOSURE: the fabric band goes around the neck exactly ONCE — a
-  single layer. The knot / tie / closure MUST be at the BACK of the neck, hidden
-  behind it — NEVER on the side and NEVER at the front. The front and sides show
-  a smooth single band with the charms only; do NOT show the knot, bow, or loose
-  scarf ends at the front or the side. Do NOT double it, stack it, coil it twice,
-  or show two loops. Ignore how any necklace in the REFERENCE (IMAGE 2) was worn.
+- WRAP, LAYERS & CLOSURE — IT IS A NECKLACE, NOT A SCARF: the fabric band goes
+  around the neck exactly ONCE as a single, smooth, narrow choker band, worn as
+  jewelry. The closure is plain and hidden at the BACK of the neck — NEVER at the
+  front and NEVER on the side. Do NOT tie a decorative bow, do NOT make a
+  scarf-style knot, and do NOT show draped or dangling scarf ends anywhere. The
+  front shows only the smooth band with its charms. Do NOT double it, stack it,
+  coil it twice, or show two loops. Ignore how any necklace in the REFERENCE
+  (IMAGE 2) was worn.
 - PROPORTIONS & SIZE: keep the true real-world size. The band is relatively thin
   and the shells/charms are small and delicate — do NOT enlarge or thicken them.
   Match the proportions in the product / size-reference images; the necklace must
@@ -55,6 +57,11 @@ Reproduce the IMAGE 1 necklace exactly:
 - CHARMS — EXACT COUNT, ORDER & PLACEMENT: reproduce ONLY the charms visible in
   IMAGE 1 — the same NUMBER (count them carefully), the same left-to-right order
   and positions along the band, the same shapes, sizes, and metal/enamel colors.
+- CHARM SPACING: spread the charms EVENLY along the band, spaced apart exactly
+  as in IMAGE 1. Each charm hangs from its OWN separate point — NEVER cluster,
+  group, or hang two charms from the same spot. A typical necklace has 3 charms
+  spaced across the front (sometimes 1, rarely 4) — match IMAGE 1's count and
+  spacing precisely.
 - Do NOT duplicate any charm (e.g. do not add a second shell), do NOT add a
   charm or shell hanging in the center unless IMAGE 1 shows one there, and do
   NOT move a charm to a different spot.
