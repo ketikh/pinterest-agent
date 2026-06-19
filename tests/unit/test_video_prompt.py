@@ -27,7 +27,7 @@ class TestBuildVideoPrompt:
             for worn in (True, False):
                 out = build_video_prompt(style=key, worn=worn)
                 words = out["prompt"].split()
-                assert len(words) <= 75, f"{key}/{worn} had {len(words)} words"
+                assert len(words) <= 85, f"{key}/{worn} had {len(words)} words"
 
     def test_keeps_eyes_open(self):
         out = build_video_prompt(style="A", worn=True)["prompt"]

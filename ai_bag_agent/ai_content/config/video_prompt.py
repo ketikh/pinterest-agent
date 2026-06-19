@@ -27,13 +27,14 @@ VIDEO_STYLES = {
     "F": "Slow drift with a soft focus rack, warm sunlit highlights, romantic mood",
 }
 
-# Necklace must always catch light; product stays stable.
-_NECKLACE_LIGHT = (
-    "necklace catches light with soft shimmer and gentle highlights on metal, "
-    "stones, and charms"
+# Light only — don't enumerate jewelry parts (listing metal/stones/chains made
+# Seedance draw MORE of them).
+_NECKLACE_LIGHT = "the necklace catches soft light with a gentle shimmer"
+# Keep the product identical — Seedance kept inventing chains/threads/ribbons.
+_NO_EXTRAS = (
+    "keep the necklace exactly as in the source; add or change nothing — "
+    "no chains, beads, threads, ribbons, or tails"
 )
-# Keep the product identical — Seedance must not invent extra dangling pieces.
-_NO_EXTRAS = "add no extra threads, ribbons, or tails"
 # Worn shot → only micro-motion on the person. Flat-lay → animate light only.
 # Eyes MUST stay open (Seedance tended to leave them shut → unnatural).
 _WORN_MOTION = (
