@@ -57,7 +57,7 @@ class TestGenerateVideo:
         assert body["model"]  # non-empty model id
         inp = body["input"]
         assert inp["prompt"] == "motion prompt"
-        assert inp["image_input"] == [IMG]
+        assert inp["input_urls"] == [IMG]  # Seedance source-image field
         assert inp["aspect_ratio"] == "9:16"
         assert inp["resolution"] == "720p"
         assert inp["duration"] == 5

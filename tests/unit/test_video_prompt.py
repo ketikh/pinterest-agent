@@ -49,3 +49,7 @@ class TestBuildVideoPrompt:
 
     def test_necklace_catches_light(self):
         assert "shimmer" in build_video_prompt(style="B")["prompt"]
+
+    def test_prompt_is_loop_friendly(self):
+        for key in VIDEO_STYLES:
+            assert "seamless loop" in build_video_prompt(style=key)["prompt"]

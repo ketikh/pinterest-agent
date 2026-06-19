@@ -135,11 +135,14 @@ def _submit_video_task(
     api_key: str, image_url: str, prompt: str, cfg: dict, max_retries: int = 3,
 ) -> Optional[str]:
     """POST createTask for a Seedance video. Returns taskId or None."""
+    # NOTE: Seedance's source-image field is `input_urls` (an array) — NOT
+    # `image_input` (which is the image-model field). Using the wrong key makes
+    # Seedance ignore the photo and text-to-video a generic clip.
     payload = {
         "model": cfg["model"],
         "input": {
             "prompt": prompt,
-            "image_input": [image_url],
+            "input_urls": [image_url],
             "aspect_ratio": cfg["aspect_ratio"],
             "resolution": cfg["resolution"],
             "duration": cfg["duration"],
