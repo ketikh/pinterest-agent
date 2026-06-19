@@ -5,7 +5,7 @@ approved product image + a motion prompt (built by config.video_prompt) and
 returns a video URL.
 
 Model + params are env-configurable so the operator can tune cost/format
-without a deploy. Defaults: Seedance 1.5 Pro, 9:16, 720p, 5s, no audio.
+without a deploy. Defaults: Seedance 1.0 Lite (cheap), 9:16, 720p, 5s, no audio.
 
 Public API:
     generate_video(image_url, prompt, tenant_id="default") -> dict
@@ -58,7 +58,9 @@ def _video_config() -> dict:
     """Read Seedance model + params from env (with social-ready defaults)."""
     audio_raw = os.environ.get("KIE_VIDEO_GENERATE_AUDIO", "false").strip().lower()
     return {
-        "model": os.environ.get("KIE_VIDEO_MODEL", "bytedance/seedance-1.5-pro"),
+        # Default to the cheaper Lite model; set KIE_VIDEO_MODEL to
+        # bytedance/seedance-1.5-pro in env for higher-quality finals.
+        "model": os.environ.get("KIE_VIDEO_MODEL", "bytedance/seedance-1.0-lite"),
         "aspect_ratio": os.environ.get("KIE_VIDEO_ASPECT_RATIO", "9:16"),
         "resolution": os.environ.get("KIE_VIDEO_RESOLUTION", "720p"),
         "duration": int(os.environ.get("KIE_VIDEO_DURATION", "5")),
