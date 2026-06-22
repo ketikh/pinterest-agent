@@ -89,20 +89,18 @@ def _pick_style(previous_style: Optional[str], styles: dict = VIDEO_STYLES) -> s
 # Bags / sleeves (TISSU) — separate prompt; protects fabric pattern + label
 # ---------------------------------------------------------------------------
 
-# Logo-safe camera bank: NO push-in and NO "shimmer/breathing light" — those
-# zoomed onto the (mis-rendered) TISSU label and caused harsh light flicker.
+# Dynamic-but-logo-safe camera bank: each pairs a cinematic move with a tasteful
+# ambient effect. NO push-in (it zoomed onto the mis-rendered TISSU label).
 _BAG_STYLES = {
-    "p": "gentle left-to-right parallax, clean daylight, crisp editorial mood",
-    "b": "slow pull-back reveal, soft diffused light, airy elegant mood",
-    "d": "subtle slow drift, soft warm light, relaxed lifestyle mood",
-    "s": "near-static frame, soft steady light, shallow depth of field",
+    "p": "slow cinematic orbit around the bag, soft light sweeping over the fabric, premium mood",
+    "b": "gentle parallax with soft bokeh drifting in the background, clean daylight, editorial mood",
+    "d": "smooth crane rise, a light breeze stirring the surroundings, warm lifestyle mood",
+    "s": "elegant slow arc with a gentle rack focus and drifting light, dreamy mood",
 }
-# Steady light (no flicker/strobe), gentle motion in the surroundings, and the
-# camera never zooms onto the logo (where the text mis-renders).
+# Guardrails so the richer motion still protects the product + logo.
 _BAG_MOTION = (
-    "bag stays still; soft steady light glides over the fabric, no flicker or "
-    "strobe; gentle motion only in the surroundings; wide slow camera, no zoom "
-    "onto the logo"
+    "bag stays stable and undistorted, no flicker; no zoom onto the logo; the "
+    "logo stays small and sharp"
 )
 BAG_VIDEO_SUFFIX = (
     "photorealistic, soft natural lighting, keep bag shape, fabric pattern and "
