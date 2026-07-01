@@ -122,78 +122,90 @@ def _pull_bag_from_inventory(tenant_id: str = "default") -> Optional[BagQueue]:
 # ---------------------------------------------------------------------------
 
 def run_necklace_generate_job(tenant_id: str = "default") -> dict:
-    """Pick the next necklace and run the full generation pipeline.
+    """Generate the next necklace (manual queue first, else inspirations)."""
+    return _run_inspiration_generate_job("necklace", "necklace", "Necklace", tenant_id)
 
-    Resolution order:
-      1. A pending necklace manually queued by admin (Necklaces page).
-      2. A necklace auto-pulled from the storefront inspirations gallery.
 
-    Returns: {success, bag_id, approval_id, error}
+def run_totebag_generate_job(tenant_id: str = "default") -> dict:
+    """Generate the next totebag (manual queue first, else inspirations)."""
+    return _run_inspiration_generate_job("totebag", "totebag", "Totebag", tenant_id)
+
+
+def _run_inspiration_generate_job(
+    category: str, product_type: str, name_prefix: str, tenant_id: str = "default",
+) -> dict:
+    """Shared: pick the next inspirations-sourced product and run the pipeline.
+
+    Resolution order: a manually-queued pending row of this type, else one
+    auto-pulled from the storefront inspirations gallery. Returns
+    {success, bag_id, approval_id, error}.
     """
     bag = (
         BagQueue.query
-        .filter_by(status="pending", tenant_id=tenant_id, product_type="necklace")
+        .filter_by(status="pending", tenant_id=tenant_id, product_type=product_type)
         .order_by(BagQueue.sort_order.asc(), BagQueue.created_at.asc())
         .first()
     )
     if bag is None:
-        bag = _pull_necklace_from_inspirations(tenant_id)
+        bag = _pull_inspiration_product(category, product_type, name_prefix, tenant_id)
 
     if bag is None:
-        logger.info("Necklace generate job: nothing to do for tenant=%s", tenant_id)
+        logger.info("%s generate job: nothing to do for tenant=%s",
+                    product_type, tenant_id)
         return {
             "success": False, "bag_id": None, "approval_id": None,
-            "error": "No necklaces in queue and inspirations gallery is empty",
+            "error": f"No {product_type}s in queue and inspirations gallery is empty",
         }
 
     return _run_pipeline_for_bag(bag)
 
 
-def _pull_necklace_from_inspirations(tenant_id: str = "default") -> Optional[BagQueue]:
-    """Pick a necklace from the storefront inspirations gallery and queue it.
+def _pull_inspiration_product(
+    category: str, product_type: str, name_prefix: str, tenant_id: str = "default",
+) -> Optional[BagQueue]:
+    """Pick a product of `category` from the inspirations gallery and queue it.
 
-    Skips necklaces used in the last RECENT_INVENTORY_DAYS so the daily feed
-    doesn't repeat. Auto-pulled necklaces have no on-neck size photo, so the
-    pipeline generates from the product photo alone. Returns the created
+    Skips items used in the last RECENT_INVENTORY_DAYS so the daily feed doesn't
+    repeat. Auto-pulled items use the product photo alone. Returns the created
     BagQueue row, or None when the gallery returns nothing usable.
     """
     from .inspirations_client import list_inspirations
 
-    items = list_inspirations(category="necklace")
+    items = list_inspirations(category=category)
     if not items:
         return None
 
     def _name_of(item: dict) -> str:
         caption = (item.get("caption") or "").strip()
-        return caption or f"Necklace #{item.get('id')}"
+        return caption or f"{name_prefix} #{item.get('id')}"
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=RECENT_INVENTORY_DAYS)
     recent_names = {
         r.bag_name for r in BagQueue.query.filter(
             BagQueue.tenant_id == tenant_id,
-            BagQueue.product_type == "necklace",
+            BagQueue.product_type == product_type,
             BagQueue.created_at >= cutoff,
         ).all()
     }
 
     fresh = [it for it in items if _name_of(it) not in recent_names]
-    pool = fresh or items  # fall back to all once every necklace was used recently
+    pool = fresh or items  # fall back to all once everything was used recently
     choice = random.choice(pool)
 
     bag = BagQueue(
         tenant_id=tenant_id,
-        product_type="necklace",
+        product_type=product_type,
         bag_name=_name_of(choice),
         image_path=choice["image_url"],
-        image_path_open=None,  # no on-neck size photo in auto mode
+        image_path_open=None,
         status="pending",
         sort_order=0,
     )
     db.session.add(bag)
     db.session.commit()
     logger.info(
-        "Pulled necklace from inspirations: #%s «%s» → BagQueue #%s",
-        choice.get("id"), bag.bag_name, bag.id,
+        "Pulled %s from inspirations: #%s «%s» → BagQueue #%s",
+        product_type, choice.get("id"), bag.bag_name, bag.id,
     )
     return bag
 
@@ -273,9 +285,11 @@ def _run_pipeline_for_bag(bag: BagQueue) -> dict:
 
 
 def _board_url_for(product_type: str) -> str:
-    """Pinterest board URL for a product type. Necklaces use the jewelry board."""
+    """Pinterest board URL for a product type (necklace=jewelry, totebag=tote)."""
     if product_type == "necklace":
         return os.environ.get("PINTEREST_BOARD_URL_JEWELRY", "")
+    if product_type == "totebag":
+        return os.environ.get("PINTEREST_BOARD_URL_TOTEBAG", "")
     return os.environ.get("PINTEREST_BOARD_URL", "")
 
 

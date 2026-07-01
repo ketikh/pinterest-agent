@@ -102,7 +102,7 @@ def init_scheduler(flask_app) -> Optional[BackgroundScheduler]:
         trigger=CronTrigger(hour=morning_hour, minute=morning_minute, timezone=timezone),
         args=[flask_app],
         id="morning_generate",
-        name="Daily generate job (bag)",
+        name="Daily generate job (alternates bag/totebag)",
         replace_existing=True,
         max_instances=1,
         coalesce=True,
@@ -171,26 +171,39 @@ def next_run_times() -> dict:
 # ---------------------------------------------------------------------------
 
 def _run_morning_in_context(flask_app) -> None:
-    """Generate a bag every day. Necklace auto-generation is OFF (necklaces are
-    manual-only via the button); totebag auto-generation is planned next."""
+    """Alternate daily — bag on even day-of-year, totebag on odd. Necklace
+    auto-generation is OFF (necklaces are manual-only via the button)."""
     with flask_app.app_context():
-        from .orchestrator import run_generate_job
+        from datetime import datetime
         try:
-            result = run_generate_job(tenant_id="default")
-            logger.info("Morning bag job: %s", result)
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo(os.environ.get("SCHEDULER_TIMEZONE", "Asia/Tbilisi"))
+            day_of_year = datetime.now(tz).timetuple().tm_yday
         except Exception:
-            logger.exception("Morning bag job crashed")
+            day_of_year = datetime.utcnow().timetuple().tm_yday
+
+        from .orchestrator import run_generate_job, run_totebag_generate_job
+        if day_of_year % 2 == 0:
+            job, label = run_generate_job, "bag"
+        else:
+            job, label = run_totebag_generate_job, "totebag"
+        try:
+            result = job(tenant_id="default")
+            logger.info("Morning %s job (day %d): %s", label, day_of_year, result)
+        except Exception:
+            logger.exception("Morning %s job crashed", label)
 
 
 def _run_evening_in_context(flask_app) -> None:
-    """Post approved BAGS (necklaces post later — see _run_necklace_post)."""
+    """Post approved BAGS and TOTEBAGS (necklaces post later, at 22:00)."""
     with flask_app.app_context():
         from .orchestrator import run_post_job
-        try:
-            result = run_post_job(tenant_id="default", product_type="bag")
-            logger.info("Evening bag post job: %s", result)
-        except Exception:
-            logger.exception("Evening bag post job crashed")
+        for product_type in ("bag", "totebag"):
+            try:
+                result = run_post_job(tenant_id="default", product_type=product_type)
+                logger.info("Evening %s post job: %s", product_type, result)
+            except Exception:
+                logger.exception("Evening %s post job crashed", product_type)
 
 
 def _run_necklace_post_in_context(flask_app) -> None:

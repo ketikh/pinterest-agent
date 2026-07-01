@@ -98,3 +98,7 @@ class TestDispatcher:
         out = build_video_prompt_for("necklace", style="A")
         assert out["prompt"].endswith(VIDEO_SUFFIX)
         assert "seamless loop" in out["prompt"]
+
+    def test_totebag_routes_to_bag_builder(self):
+        out = build_video_prompt_for("totebag", style="p")
+        assert out["prompt"].endswith(BAG_VIDEO_SUFFIX)

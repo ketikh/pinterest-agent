@@ -356,3 +356,43 @@ class TestRunNecklaceGenerateJob:
         # The jewelry board URL (not the bag board) must be used for necklaces.
         _, kwargs = pin.call_args
         assert kwargs.get("board_url") == "https://pin/jewelry"
+
+
+class TestRunTotebagGenerateJob:
+    def test_pulls_totebag_from_inspirations(self, flask_app):
+        items = [{"id": 7, "category": "totebag",
+                  "image_url": "https://c/t.jpg", "caption": "", "position": 1}]
+        with patch("ai_bag_agent.ai_content.services.inspirations_client.list_inspirations",
+                   return_value=items), \
+             patch.object(orchestrator.pinterest_client, "get_random_pin",
+                          return_value={"success": True, "image_url": "https://p.jpg",
+                                        "pin_id": "p1", "error": None}), \
+             patch.object(orchestrator.ai_generator, "generate_image",
+                          return_value={"success": True, "generated_url": "https://k.png",
+                                        "local_path": None, "prompt_used": "p", "error": None}), \
+             patch.object(orchestrator, "send_approval_request_sync", return_value="55"):
+            result = orchestrator.run_totebag_generate_job()
+
+        assert result["success"] is True
+        from ai_bag_agent.ai_content.models import BagQueue
+        bag = BagQueue.query.get(result["bag_id"])
+        assert bag.product_type == "totebag"
+        assert bag.bag_name == "Totebag #7"
+
+    def test_totebag_uses_tote_board(self, flask_app):
+        items = [{"id": 9, "image_url": "https://c/t.jpg", "caption": "Olive", "position": 1}]
+        with patch.dict("os.environ", {"PINTEREST_BOARD_URL_TOTEBAG": "https://pin/tote"}), \
+             patch("ai_bag_agent.ai_content.services.inspirations_client.list_inspirations",
+                   return_value=items), \
+             patch.object(orchestrator.pinterest_client, "get_random_pin") as pin, \
+             patch.object(orchestrator.ai_generator, "generate_image",
+                          return_value={"success": True, "generated_url": "https://k.png",
+                                        "local_path": None, "prompt_used": "p", "error": None}), \
+             patch.object(orchestrator, "send_approval_request_sync", return_value="1"):
+            pin.return_value = {"success": True, "image_url": "https://p.jpg",
+                                "pin_id": "p1", "error": None}
+            orchestrator.run_totebag_generate_job()
+
+        # The tote-bags board (not the laptop board) must be used for totebags.
+        _, kwargs = pin.call_args
+        assert kwargs.get("board_url") == "https://pin/tote"

@@ -56,8 +56,8 @@ def list_products(in_stock_only: bool = True) -> list:
 
     Each item exposes the full storefront schema: id, name, code,
     image_front, image_back, category_slug, in_stock, etc. We keep only
-    products whose category_slug is "bag" (excludes necklaces, aprons,
-    kids bags). Returns [] on any failure (logged).
+    laptop-case products (category_slug "laptop-cases"; excludes necklaces,
+    tote-bags, aprons, kids bags). Returns [] on any failure (logged).
     """
     base = _base_url()
     key = _api_key()
@@ -103,10 +103,11 @@ def list_products(in_stock_only: bool = True) -> list:
     if in_stock_only:
         data = [p for p in data if p.get("in_stock") is True]
 
-    # Category filter — only laptop bags. The storefront uses category_slug
-    # to tag rows: 'bag' (what we want), 'necklace', 'apron', 'kidsbag'.
+    # Category filter — only laptop cases. The storefront tags rows by
+    # category_slug: 'laptop-cases' (what we want), 'tote-bags', 'necklace',
+    # 'apron', 'kidsbag'.
     # Configurable via env to cover future categories without a deploy.
-    allowed_slug_raw = os.environ.get("INVENTORY_CATEGORY_SLUGS", "bag")
+    allowed_slug_raw = os.environ.get("INVENTORY_CATEGORY_SLUGS", "laptop-cases")
     if allowed_slug_raw and allowed_slug_raw.strip() != "*":
         allowed = tuple(s.strip() for s in allowed_slug_raw.split(",") if s.strip())
         before = len(data)

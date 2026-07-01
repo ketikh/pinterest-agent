@@ -124,7 +124,7 @@ def build_video_prompt_for(
     product_type: str, previous_style: Optional[str] = None,
     style: Optional[str] = None,
 ) -> dict:
-    """Route to the right builder by product type (necklace vs bag)."""
-    if product_type == "bag":
+    """Route to the right builder by product type. Totebags are bags."""
+    if product_type in ("bag", "totebag"):
         return build_bag_video_prompt(previous_style=previous_style, style=style)
     return build_video_prompt(previous_style=previous_style, worn=True, style=style)
