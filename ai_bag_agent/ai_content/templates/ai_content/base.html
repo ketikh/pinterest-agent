@@ -105,6 +105,12 @@
         </a>
       </li>
       <li class="nav-item">
+        <a href="{{ url_for('ai_content.totebags') }}"
+           class="{{ 'active' if request.endpoint == 'ai_content.totebags' }}">
+          <i class="bi bi-bag"></i> Totebags
+        </a>
+      </li>
+      <li class="nav-item">
         <a href="{{ url_for('ai_content.approvals') }}"
            class="{{ 'active' if request.endpoint == 'ai_content.approvals' }}">
           <i class="bi bi-check2-circle"></i> Approvals

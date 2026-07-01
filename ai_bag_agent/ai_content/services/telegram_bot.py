@@ -760,12 +760,9 @@ def _blocking_regenerate(old_approval_id: int, extra_prompt: str = "") -> Option
             _trace_step(old_approval_id, f"REGEN bag #{bag_queue_id} type={product_type}, side={chosen_side}, regen->{new_regen_count}")
 
         _trace_step(old_approval_id, "REGEN calling Pinterest get_random_pin")
-        board_env = (
-            "PINTEREST_BOARD_URL_JEWELRY" if product_type == "necklace"
-            else "PINTEREST_BOARD_URL"
-        )
+        from .orchestrator import _board_url_for
         pin_result = get_random_pin(
-            board_url=os.environ.get(board_env, ""),
+            board_url=_board_url_for(product_type),
             tenant_id=tenant_id,
         )
         if not pin_result["success"]:

@@ -416,6 +416,143 @@ def jobs_run_necklace_generate():
 
 
 # ---------------------------------------------------------------------------
+# Totebags — same flow as necklaces, sourced from inspirations (totebag)
+# ---------------------------------------------------------------------------
+
+@ai_content_bp.route("/totebags")
+@login_required
+def totebags():
+    """Totebag gallery (generate new) + already-generated totebags (regenerate)."""
+    from .services.inspirations_client import list_inspirations
+    items = list_inspirations(category="totebag")
+
+    rows = (
+        BagQueue.query.filter_by(product_type="totebag")
+        .order_by(BagQueue.created_at.desc())
+        .limit(24)
+        .all()
+    )
+    generated = []
+    for bag in rows:
+        latest = (
+            PendingApproval.query.filter_by(bag_queue_id=bag.id)
+            .order_by(PendingApproval.created_at.desc())
+            .first()
+        )
+        generated.append({"bag": bag, "approval": latest})
+
+    return render_template(
+        "ai_content/totebags.html", items=items, generated=generated,
+    )
+
+
+@ai_content_bp.route("/totebags/generate", methods=["POST"])
+@login_required
+def totebags_generate():
+    """One-click totebag generate. Second-view photo is OPTIONAL; the prompt is
+    the built-in bag default."""
+    name = request.form.get("name", "").strip() or "Totebag"
+    product_url = request.form.get("product_url", "").strip()
+    custom_prompt = request.form.get("custom_prompt", "").strip() or None
+    reference_url = request.form.get("reference_url", "").strip() or None
+    file = request.files.get("second_image")
+
+    if not product_url:
+        flash("პროდუქტის ფოტო ვერ მოიძებნა — სცადე გვერდის განახლება.", "danger")
+        return redirect(url_for("ai_content.totebags"))
+
+    second_url = None
+    if file and file.filename:
+        if not _allowed_file(file.filename):
+            flash("მხოლოდ JPG, PNG ან WebP ფორმატია დაშვებული.", "danger")
+            return redirect(url_for("ai_content.totebags"))
+        from .services.cloudinary_svc import upload_image
+        suffix = pathlib.Path(secure_filename(file.filename)).suffix
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            file.save(tmp.name)
+            result = upload_image(tmp.name, tenant_id="default", category="references")
+        os.unlink(tmp.name)
+        if not result["success"]:
+            flash(f"მეორე ფოტო Cloudinary-ზე ვერ ავიდა: {result['error']}", "danger")
+            return redirect(url_for("ai_content.totebags"))
+        second_url = result["public_url"]
+
+    bag = BagQueue(
+        product_type="totebag",
+        bag_name=name,
+        image_path=product_url,
+        image_path_open=second_url,  # optional second/back view
+        custom_prompt=custom_prompt,
+        reference_url=reference_url,
+        status="pending",
+        sort_order=0,
+    )
+    db.session.add(bag)
+    db.session.commit()
+    bag_id = bag.id
+
+    def _run(_app):
+        from .services.orchestrator import trigger_for_bag
+        trigger_for_bag(bag_id)
+
+    _start_async(_run)
+    flash(f"⏳ «{name}» — გენერაცია დაიწყო. ფოტო Telegram-ში მოვა ~60 წამში.", "info")
+    return redirect(url_for("ai_content.totebags"))
+
+
+@ai_content_bp.route("/totebags/<int:bag_id>/regenerate", methods=["POST"])
+@login_required
+def totebags_regenerate(bag_id: int):
+    """Re-run a totebag WITHOUT re-uploading — reuses the saved photos + prompt."""
+    bag = BagQueue.query.get_or_404(bag_id)
+    if bag.product_type != "totebag":
+        flash("ეს ჩანაწერი totebag არ არის.", "warning")
+        return redirect(url_for("ai_content.totebags"))
+
+    latest = (
+        PendingApproval.query.filter_by(bag_queue_id=bag.id)
+        .order_by(PendingApproval.created_at.desc())
+        .first()
+    )
+    if latest is not None:
+        approval_id = latest.id
+
+        def _run(_app):
+            from .services.orchestrator import regenerate_approval
+            regenerate_approval(approval_id)
+
+        _start_async(_run)
+    else:
+        bag.status = "failed"
+        db.session.commit()
+
+        def _run(_app):
+            from .services.orchestrator import trigger_for_bag
+            trigger_for_bag(bag_id)
+
+        _start_async(_run)
+
+    flash(f"🔄 «{bag.bag_name}» — რეგენერაცია დაიწყო. ახალი ფოტო Telegram-ში მოვა.", "info")
+    return redirect(url_for("ai_content.totebags"))
+
+
+@ai_content_bp.route("/jobs/run-totebag-generate", methods=["POST"])
+@login_required
+def jobs_run_totebag_generate():
+    """Auto-pick a totebag from the inspirations gallery and generate it now."""
+    def _run(_app):
+        from .services.orchestrator import run_totebag_generate_job
+        run_totebag_generate_job(tenant_id="default")
+
+    _start_async(_run)
+    flash(
+        "⏳ totebag-ის გენერაცია დაიწყო — ფოტო Telegram-ში მოვა ~60–180 წამში.",
+        "info",
+    )
+    return redirect(request.referrer or url_for("ai_content.totebags"))
+
+
+# ---------------------------------------------------------------------------
 # Approvals
 # ---------------------------------------------------------------------------
 
