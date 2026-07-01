@@ -137,6 +137,42 @@ def create_app(config_override: Optional[Dict] = None) -> Flask:
         except Exception as exc:
             info["diag_error"] = str(exc)
 
+        # Pinterest board pin counts — only when explicitly requested
+        # (/health/db?pins=1), since it hits the Pinterest API.
+        from flask import request as _req
+        if _req.args.get("pins"):
+            try:
+                from .ai_content.services import pinterest_client as pc
+                from .ai_content.models import RecentPinCache
+                boards = {
+                    "bag": os.environ.get("PINTEREST_BOARD_URL", ""),
+                    "necklace": os.environ.get("PINTEREST_BOARD_URL_JEWELRY", ""),
+                    "totebag": os.environ.get(
+                        "PINTEREST_BOARD_URL_TOTEBAG",
+                        "https://www.pinterest.com/tissugeorgia/tote-bags/"),
+                }
+                out = {}
+                with app.app_context():
+                    for name, url in boards.items():
+                        if not url:
+                            out[name] = "no-url"
+                            continue
+                        bid = pc.get_board_id_from_url(url)
+                        if not bid:
+                            out[name] = "board-not-found"
+                            continue
+                        pins = pc.get_pins_from_board(bid)
+                        out[name] = {
+                            "board_id": bid, "pins": len(pins),
+                            "with_created_at": sum(
+                                1 for p in pins if p.get("created_at")),
+                        }
+                    info["boards"] = out
+                    info["recent_pin_cache_count"] = (
+                        db.session.query(RecentPinCache).count())
+            except Exception as exc:
+                info["pins_error"] = str(exc)
+
         # Redact any secrets that may have leaked into log tails / error
         # strings (e.g. the Telegram token in an httpx request URL).
         def _redact(blob: str) -> str:
