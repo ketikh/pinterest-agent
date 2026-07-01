@@ -173,6 +173,26 @@ def create_app(config_override: Optional[Dict] = None) -> Flask:
             except Exception as exc:
                 info["pins_error"] = str(exc)
 
+        # Write-test the recent-pin cache (/health/db?marktest=1) to see why it
+        # stays empty (pins seem to repeat).
+        if _req.args.get("marktest"):
+            try:
+                from .ai_content.models import RecentPinCache
+                with app.app_context():
+                    before = db.session.query(RecentPinCache).count()
+                    row = RecentPinCache(pin_id="DIAG_TEST_PIN", tenant_id="default")
+                    db.session.add(row)
+                    db.session.commit()
+                    after = db.session.query(RecentPinCache).count()
+                    info["marktest"] = {"before": before, "after": after,
+                                        "persisted": after > before}
+            except Exception as exc:
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+                info["marktest"] = {"error": repr(exc)}
+
         # Redact any secrets that may have leaked into log tails / error
         # strings (e.g. the Telegram token in an httpx request URL).
         def _redact(blob: str) -> str:
