@@ -192,28 +192,22 @@ def get_random_pin(
     if not pins:
         return _err("Board has no pins or token expired")
 
-    # Filter recently used
-    recent_ids = get_recent_pin_ids(tenant_id, exclude_recent_days)
-    filtered = [p for p in pins if p["id"] not in recent_ids]
+    # Rotate references robustly: prefer pins that were NEVER used (newest
+    # first), then the LEAST-recently-used. "Used" is read from approvals'
+    # reference_pin_id (which always persists) plus the recent-pin cache — so
+    # rotation keeps working even if a cache write was skipped. No repeat until
+    # every pin has been shown, then oldest-first.
+    last_used = get_pin_last_used_map(tenant_id)
+    never_used = [p for p in pins if p["id"] not in last_used]
+    if never_used:
+        never_used.sort(key=lambda p: (p.get("created_at") or ""), reverse=True)
+        ordered = never_used
+    else:
+        ordered = sorted(pins, key=lambda p: last_used.get(p["id"], 0.0))
 
-    if not filtered:
-        logger.warning(
-            "All %d pins on this board recently used — resetting THIS board's "
-            "cache only (tenant=%s)", len(pins), tenant_id,
-        )
-        # Scope the reset to THIS board's pins so cycling one board (e.g. the
-        # small tote-bags board) doesn't wipe another board's history (e.g.
-        # laptop-cases), which made the same reference repeat.
-        clear_board_pins_from_cache({p["id"] for p in pins}, tenant_id)
-        filtered = pins
-
-    # Pick the next reference in DATE order (newest first) instead of at random,
-    # so references advance sequentially and an already-used / old pin isn't
-    # re-shown until the whole board has been cycled. Skip pins with no image.
-    filtered.sort(key=lambda p: (p.get("created_at") or ""), reverse=True)
     chosen = None
     image_url = None
-    for candidate in filtered:
+    for candidate in ordered:
         try:
             image_url = get_best_image_url(candidate)
         except ValueError:
@@ -262,7 +256,7 @@ def get_recent_pin_ids(tenant_id: str, days: int = RECENT_CACHE_DAYS) -> set:
     """Return set of pin_ids used within the last N days."""
     try:
         from ..models import RecentPinCache
-        from ..extensions import db
+        from ...extensions import db
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         rows = (
             db.session.query(RecentPinCache.pin_id)
@@ -278,11 +272,67 @@ def get_recent_pin_ids(tenant_id: str, days: int = RECENT_CACHE_DAYS) -> set:
         return set()
 
 
-def mark_pin_as_used(pin_id: str, tenant_id: str) -> None:
-    """Insert or refresh pin usage timestamp in recent_pin_cache."""
+def _to_epoch(dt) -> float:
+    """Datetime → epoch seconds, tolerating naive datetimes and None."""
+    if dt is None:
+        return 0.0
+    try:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.timestamp()
+    except Exception:
+        return 0.0
+
+
+def get_pin_last_used_map(tenant_id: str, limit: int = 1000) -> dict:
+    """Map pin_id → most-recent-use epoch seconds.
+
+    Sourced from approvals' reference_pin_id (durable — approvals always
+    persist) and the recent-pin cache. Used to rotate references reliably.
+    """
+    from ...extensions import db
+    out: dict = {}
+    try:
+        from ..models import PendingApproval
+        rows = (
+            db.session.query(
+                PendingApproval.reference_pin_id, PendingApproval.created_at
+            )
+            .filter(
+                PendingApproval.tenant_id == tenant_id,
+                PendingApproval.reference_pin_id.isnot(None),
+            )
+            .order_by(PendingApproval.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        for pid, created in rows:
+            if pid and pid not in out:  # first row = most recent
+                out[pid] = _to_epoch(created)
+    except Exception as exc:
+        logger.debug("last-used (approvals) skipped: %s", exc)
     try:
         from ..models import RecentPinCache
-        from ..extensions import db
+        rows = (
+            db.session.query(RecentPinCache.pin_id, RecentPinCache.used_at)
+            .filter(RecentPinCache.tenant_id == tenant_id)
+            .all()
+        )
+        for pid, used in rows:
+            e = _to_epoch(used)
+            if pid and e > out.get(pid, 0.0):
+                out[pid] = e
+    except Exception as exc:
+        logger.debug("last-used (cache) skipped: %s", exc)
+    return out
+
+
+def mark_pin_as_used(pin_id: str, tenant_id: str) -> None:
+    """Insert or refresh pin usage in recent_pin_cache (best-effort; approvals'
+    reference_pin_id is the durable fallback for rotation)."""
+    from ...extensions import db
+    try:
+        from ..models import RecentPinCache
         existing = (
             db.session.query(RecentPinCache)
             .filter_by(pin_id=pin_id, tenant_id=tenant_id)
@@ -293,16 +343,28 @@ def mark_pin_as_used(pin_id: str, tenant_id: str) -> None:
         else:
             db.session.add(RecentPinCache(pin_id=pin_id, tenant_id=tenant_id))
         db.session.commit()
-        logger.debug("Marked pin %s as used for tenant=%s", pin_id, tenant_id)
     except Exception as exc:
-        logger.debug("mark_pin_as_used skipped (no app context?): %s", exc)
+        # Retry once on a clean session — the pipeline session may be in a
+        # failed transaction state at this point.
+        logger.warning("mark_pin_as_used failed for %s (%s) — retrying clean",
+                       pin_id, exc)
+        try:
+            db.session.rollback()
+            db.session.add(RecentPinCache(pin_id=pin_id, tenant_id=tenant_id))
+            db.session.commit()
+        except Exception as exc2:
+            logger.error("mark_pin_as_used retry failed for %s: %s", pin_id, exc2)
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
 
 
 def cleanup_old_cache(tenant_id: str = "default", days: int = 30) -> int:
     """Delete cache entries older than N days. Returns deleted count."""
     try:
         from ..models import RecentPinCache
-        from ..extensions import db
+        from ...extensions import db
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         deleted = (
             db.session.query(RecentPinCache)
@@ -330,7 +392,7 @@ def clear_board_pins_from_cache(pin_ids: set, tenant_id: str = "default") -> int
         return 0
     try:
         from ..models import RecentPinCache
-        from ..extensions import db
+        from ...extensions import db
         deleted = (
             db.session.query(RecentPinCache)
             .filter(
