@@ -289,7 +289,10 @@ def _board_url_for(product_type: str) -> str:
     if product_type == "necklace":
         return os.environ.get("PINTEREST_BOARD_URL_JEWELRY", "")
     if product_type == "totebag":
-        return os.environ.get("PINTEREST_BOARD_URL_TOTEBAG", "")
+        return os.environ.get(
+            "PINTEREST_BOARD_URL_TOTEBAG",
+            "https://www.pinterest.com/tissugeorgia/tote-bags/",
+        )
     return os.environ.get("PINTEREST_BOARD_URL", "")
 
 

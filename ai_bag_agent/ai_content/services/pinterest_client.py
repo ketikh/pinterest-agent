@@ -197,8 +197,14 @@ def get_random_pin(
     filtered = [p for p in pins if p["id"] not in recent_ids]
 
     if not filtered:
-        logger.warning("All %d pins recently used — resetting cache for tenant=%s", len(pins), tenant_id)
-        cleanup_old_cache(days=0)  # clear all cache for this tenant
+        logger.warning(
+            "All %d pins on this board recently used — resetting THIS board's "
+            "cache only (tenant=%s)", len(pins), tenant_id,
+        )
+        # Scope the reset to THIS board's pins so cycling one board (e.g. the
+        # small tote-bags board) doesn't wipe another board's history (e.g.
+        # laptop-cases), which made the same reference repeat.
+        clear_board_pins_from_cache({p["id"] for p in pins}, tenant_id)
         filtered = pins
 
     # Pick the next reference in DATE order (newest first) instead of at random,
@@ -311,6 +317,33 @@ def cleanup_old_cache(tenant_id: str = "default", days: int = 30) -> int:
         return deleted
     except Exception as exc:
         logger.debug("cleanup_old_cache skipped: %s", exc)
+        return 0
+
+
+def clear_board_pins_from_cache(pin_ids: set, tenant_id: str = "default") -> int:
+    """Remove only the given pin_ids from the recent cache (scoped board reset).
+
+    Lets one board cycle back to the start without touching other boards'
+    recent-use history. Returns the number of rows deleted.
+    """
+    if not pin_ids:
+        return 0
+    try:
+        from ..models import RecentPinCache
+        from ..extensions import db
+        deleted = (
+            db.session.query(RecentPinCache)
+            .filter(
+                RecentPinCache.tenant_id == tenant_id,
+                RecentPinCache.pin_id.in_(list(pin_ids)),
+            )
+            .delete(synchronize_session=False)
+        )
+        db.session.commit()
+        logger.info("Reset %d cached pins for one board (tenant=%s)", deleted, tenant_id)
+        return deleted
+    except Exception as exc:
+        logger.debug("clear_board_pins_from_cache skipped: %s", exc)
         return 0
 
 
