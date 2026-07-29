@@ -38,14 +38,10 @@ ERASE THE REFERENCE'S NECKLACE COMPLETELY:
 
 THE NECKLACE IS SACRED — IT MUST NOT CHANGE.
 Reproduce the IMAGE 1 necklace exactly:
-- WRAP, LAYERS & CLOSURE — IT IS A NECKLACE, NOT A SCARF: the fabric band goes
-  around the neck exactly ONCE as a single, smooth, narrow choker band, worn as
-  jewelry. The closure is plain and hidden at the BACK of the neck — NEVER at the
-  front and NEVER on the side. Do NOT tie a decorative bow, do NOT make a
-  scarf-style knot, and do NOT show draped or dangling scarf ends anywhere. The
-  front shows only the smooth band with its charms. Do NOT double it, stack it,
-  coil it twice, or show two loops. Ignore how any necklace in the REFERENCE
-  (IMAGE 2) was worn.
+- WRAP & FIT: the fabric band wraps around the neck exactly ONE time — a single
+  loop, sitting snugly as a choker. The closure is fastened at the BACK of the
+  neck and is not visible from the front. The front shows only the smooth flat
+  band with its charms. One loop only — never two.
 - PROPORTIONS & SIZE: keep the true real-world size. The band is relatively thin
   and the shells/charms are small and delicate — do NOT enlarge or thicken them.
   Match the proportions in the product / size-reference images; the necklace must

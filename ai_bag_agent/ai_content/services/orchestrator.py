@@ -137,27 +137,52 @@ def _run_inspiration_generate_job(
     """Shared: pick the next inspirations-sourced product and run the pipeline.
 
     Resolution order: a manually-queued pending row of this type, else one
-    auto-pulled from the storefront inspirations gallery. Returns
-    {success, bag_id, approval_id, error}.
+    auto-pulled from the storefront inspirations gallery. If kie.ai returns
+    an internal error (bad image quality / server glitch), we mark that row
+    failed and retry with a fresh inspiration — up to MAX_IMAGE_RETRIES times.
+    Returns {success, bag_id, approval_id, error}.
     """
+    MAX_IMAGE_RETRIES = 3
+
+    # Manually-queued rows get one attempt (no auto-retry; admin picked it).
     bag = (
         BagQueue.query
         .filter_by(status="pending", tenant_id=tenant_id, product_type=product_type)
         .order_by(BagQueue.sort_order.asc(), BagQueue.created_at.asc())
         .first()
     )
-    if bag is None:
+    if bag is not None:
+        return _run_pipeline_for_bag(bag)
+
+    # Auto-pick from inspirations gallery, retrying on kie.ai internal errors.
+    for attempt in range(1, MAX_IMAGE_RETRIES + 1):
         bag = _pull_inspiration_product(category, product_type, name_prefix, tenant_id)
+        if bag is None:
+            logger.info("%s generate job: nothing to do for tenant=%s",
+                        product_type, tenant_id)
+            return {
+                "success": False, "bag_id": None, "approval_id": None,
+                "error": f"No {product_type}s in queue and inspirations gallery is empty",
+            }
 
-    if bag is None:
-        logger.info("%s generate job: nothing to do for tenant=%s",
-                    product_type, tenant_id)
-        return {
-            "success": False, "bag_id": None, "approval_id": None,
-            "error": f"No {product_type}s in queue and inspirations gallery is empty",
-        }
+        result = _run_pipeline_for_bag(bag)
+        if result["success"]:
+            return result
 
-    return _run_pipeline_for_bag(bag)
+        error = result.get("error", "")
+        is_kieai_internal = "Internal Error" in error or "kie.ai" in error
+        if is_kieai_internal and attempt < MAX_IMAGE_RETRIES:
+            logger.warning(
+                "%s attempt %d/%d failed (%s) — retrying with a different image",
+                product_type, attempt, MAX_IMAGE_RETRIES, error,
+            )
+            continue
+        return result
+
+    return {
+        "success": False, "bag_id": None, "approval_id": None,
+        "error": f"All {MAX_IMAGE_RETRIES} inspiration images failed for {product_type}",
+    }
 
 
 def _pull_inspiration_product(
