@@ -29,7 +29,7 @@ import requests
 logger = logging.getLogger(__name__)
 
 DEFAULT_BASE_URL = "https://tissu-agent-production.up.railway.app"
-TIMEOUT_SEC = 10
+TIMEOUT_SEC = 30
 
 
 # ---------------------------------------------------------------------------

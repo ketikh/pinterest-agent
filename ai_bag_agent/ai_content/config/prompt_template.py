@@ -55,8 +55,15 @@ RULES:
      APPLY THAT SAME LIGHTING TO THE BAG. The bag must look like it was
      photographed in the reference's lighting environment.
    - Copy the background mood, staging, and composition as well.
-   - Do NOT copy any products, models, bags, or items from the reference.
+   - Do NOT copy any products, bags, or items from the reference.
    - The reference is inspiration for the SCENE and LIGHT, not the SUBJECT.
+
+   MODEL IN REFERENCE: If the reference photo shows a person or model holding,
+   wearing, or carrying a bag — you MAY reproduce that model and their
+   pose/clothing/composition in the output. However, the bag in the model's
+   hands, arms, or shoulder MUST be the PRIMARY bag from image 1, reproduced
+   exactly (same shape, color, pattern, hardware). Never use the reference
+   bag's shape or design — swap it out entirely with the PRIMARY bag.
 
    *** ANTI-DIMENSION-BLEEDING — READ TWICE ***
    The reference photo may contain a bag that is WIDER, TALLER, FATTER,

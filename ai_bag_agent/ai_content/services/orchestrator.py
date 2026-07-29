@@ -321,11 +321,22 @@ def _run_pipeline_for_bag_inner(bag: BagQueue) -> dict:
             tenant_id=tenant_id,
         )
         if not pin["success"]:
-            _trace_step(bag_id, f"Pinterest FAIL: {pin['error']}")
-            return _fail(bag, f"Pinterest: {pin['error']}")
-        reference_url = pin["image_url"]
-        reference_pin_id = pin.get("pin_id")
-        _trace_step(bag_id, f"Pinterest OK pin_id={reference_pin_id}")
+            _trace_step(bag_id, f"Pinterest FAIL: {pin['error']} — trying fallback reference")
+            fallback = _get_fallback_reference_url(tenant_id)
+            if fallback:
+                reference_url = fallback
+                reference_pin_id = None
+                logger.warning(
+                    "Bag %s: Pinterest unavailable (%s), using fallback reference URL",
+                    bag_id, pin["error"],
+                )
+                _trace_step(bag_id, "fallback reference OK")
+            else:
+                return _fail(bag, f"Pinterest: {pin['error']}")
+        else:
+            reference_url = pin["image_url"]
+            reference_pin_id = pin.get("pin_id")
+            _trace_step(bag_id, f"Pinterest OK pin_id={reference_pin_id}")
 
     # ---- 2. Build kie.ai inputs + prompt (differs by product type) ---------
     if product_type == "necklace":
@@ -458,6 +469,30 @@ def _pick_primary_side(bag: BagQueue) -> tuple[str, str]:
         bag.id, bag.bag_name, chosen_side, front_count, back_count,
     )
     return chosen_url, chosen_side
+
+
+def _get_fallback_reference_url(tenant_id: str = "default") -> Optional[str]:
+    """Return a random image URL from recent approvals when Pinterest is unavailable.
+
+    Picks from the 50 most recent approvals that have a direct pinimg.com URL,
+    so we never recycle board-level URLs or empty strings.
+    """
+    import random as _random
+    rows = (
+        PendingApproval.query
+        .filter(
+            PendingApproval.tenant_id == tenant_id,
+            PendingApproval.reference_url.isnot(None),
+            PendingApproval.reference_url != "",
+        )
+        .order_by(PendingApproval.id.desc())
+        .limit(50)
+        .all()
+    )
+    image_rows = [r for r in rows if r.reference_url and "pinimg.com" in r.reference_url]
+    if not image_rows:
+        return None
+    return _random.choice(image_rows).reference_url
 
 
 def _fail(bag: BagQueue, error: str) -> dict:
