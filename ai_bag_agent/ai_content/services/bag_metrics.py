@@ -18,16 +18,19 @@ import requests
 logger = logging.getLogger(__name__)
 
 _MAX_SIDE = 512          # downscale for speed; ratio is scale-invariant
-_DIFF_THRESHOLD = 28     # 0-255 luminance difference from the background
+_DIFF_THRESHOLD = 40     # 0-255 luminance difference from the background
+_MIN_COVERAGE = 0.08     # a row/column counts as "bag" when ≥8% of it is foreground
 _SQUARE_TOLERANCE = 0.05
 
 
 def measure_bag_geometry(image_url: str, timeout: int = 20) -> Optional[dict]:
-    """Return ``{"ratio", "orientation", "box_w", "box_h"}`` or None.
+    """Return ``{"ratio", "orientation", "box_w", "box_h", "source"}`` or None.
 
-    ``ratio`` is bounding-box width / height (2 decimals). Never raises:
-    any download or decode problem returns None and the prompt goes out
-    without the measured block.
+    ``ratio`` is bounding-box width / height (2 decimals); ``source`` is
+    "bbox" when the bag was isolated from a plain background, "frame" when
+    the background was too busy and the photo's own frame ratio is used
+    (product shots are framed around the bag, so it is a fair proxy).
+    Never raises: any download or decode problem returns None.
     """
     try:
         resp = requests.get(image_url, timeout=timeout)
@@ -39,30 +42,61 @@ def measure_bag_geometry(image_url: str, timeout: int = 20) -> Optional[dict]:
 
 
 def geometry_from_bytes(data: bytes) -> Optional[dict]:
-    """Bounding box of everything that is not background colour."""
-    from PIL import Image, ImageChops
+    """Bounding box of the region that differs from the background colour."""
+    from PIL import Image, ImageChops, ImageOps
 
-    img = Image.open(BytesIO(data)).convert("RGB")
+    img = Image.open(BytesIO(data))
+    # Phone photos carry an EXIF rotation; without this a portrait bag is
+    # measured as landscape.
+    img = ImageOps.exif_transpose(img).convert("RGB")
     if max(img.size) > _MAX_SIDE:
         img.thumbnail((_MAX_SIDE, _MAX_SIDE))
+    width, height = img.size
 
     background = Image.new("RGB", img.size, _border_colour(img))
     diff = ImageChops.difference(img, background).convert("L")
     mask = diff.point(lambda v: 255 if v > _DIFF_THRESHOLD else 0)
-    bbox = mask.getbbox()
-    if not bbox:
+    extent = _dense_extent(mask)
+    if extent is None:
         return None
-    box_w, box_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    box_w, box_h, source = extent
     if box_w < 8 or box_h < 8:
         return None
-    ratio = round(box_w / box_h, 2)
+    # Busy background → the "bag" fills the frame; use the frame ratio.
+    if box_w >= 0.95 * width and box_h >= 0.95 * height:
+        box_w, box_h, source = width, height, "frame"
+    return {"ratio": round(box_w / box_h, 2), "orientation": _orientation(box_w / box_h),
+            "box_w": box_w, "box_h": box_h, "source": source}
+
+
+def _dense_extent(mask) -> Optional[tuple]:
+    """Width/height of the span of rows and columns that are ≥8% foreground.
+
+    Unlike a raw bounding box this ignores sparse noise (shadows, fabric
+    wrinkles, dust) around the product.
+    """
+    width, height = mask.size
+    pixels = mask.load()
+    col_hits = [0] * width
+    row_hits = [0] * height
+    for y in range(height):
+        for x in range(width):
+            if pixels[x, y]:
+                col_hits[x] += 1
+                row_hits[y] += 1
+    cols = [x for x, n in enumerate(col_hits) if n >= _MIN_COVERAGE * height]
+    rows = [y for y, n in enumerate(row_hits) if n >= _MIN_COVERAGE * width]
+    if not cols or not rows:
+        return None
+    return cols[-1] - cols[0] + 1, rows[-1] - rows[0] + 1, "bbox"
+
+
+def _orientation(ratio: float) -> str:
     if ratio < 1 - _SQUARE_TOLERANCE:
-        orientation = "portrait"
-    elif ratio > 1 + _SQUARE_TOLERANCE:
-        orientation = "landscape"
-    else:
-        orientation = "square"
-    return {"ratio": ratio, "orientation": orientation, "box_w": box_w, "box_h": box_h}
+        return "portrait"
+    if ratio > 1 + _SQUARE_TOLERANCE:
+        return "landscape"
+    return "square"
 
 
 def _border_colour(img) -> tuple:

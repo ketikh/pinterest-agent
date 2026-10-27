@@ -83,3 +83,46 @@ class TestDescribeGeometry:
 
     def test_none_is_empty(self):
         assert bm.describe_geometry(None) == ""
+
+
+class TestRobustness:
+    def test_exif_rotated_phone_photo_is_measured_upright(self):
+        """A portrait bag stored as a landscape JPEG with EXIF orientation=6."""
+        from PIL import Image, ImageDraw
+        img = Image.new("RGB", (400, 300), (255, 255, 255))      # stored landscape
+        ImageDraw.Draw(img).rectangle((60, 90, 339, 209), fill=(30, 30, 30))  # 280x120
+        exif = Image.Exif()
+        exif[274] = 6  # rotate 90° CW on display → becomes 120 wide x 280 tall
+        buf = BytesIO()
+        img.save(buf, format="JPEG", exif=exif.tobytes())
+        g = bm.geometry_from_bytes(buf.getvalue())
+        assert g["orientation"] == "portrait"
+        assert abs(g["ratio"] - 120 / 280) < 0.05
+
+    def test_sparse_noise_around_bag_is_ignored(self):
+        from PIL import Image, ImageDraw
+        img = Image.new("RGB", (300, 300), (255, 255, 255))
+        d = ImageDraw.Draw(img)
+        d.rectangle((100, 60, 199, 239), fill=(40, 30, 20))   # 100 x 180 bag
+        for x in range(0, 300, 25):                           # dust specks far outside
+            d.point((x, 5), fill=(0, 0, 0))
+            d.point((5, x), fill=(0, 0, 0))
+        g = bm.geometry_from_bytes(_png() if False else _bytes(img))
+        assert g["source"] == "bbox"
+        assert abs(g["ratio"] - 100 / 180) < 0.03
+
+    def test_busy_background_falls_back_to_frame_ratio(self):
+        from PIL import Image
+        import random
+        random.seed(1)
+        img = Image.new("RGB", (300, 400))
+        img.putdata([(random.randint(0, 255),) * 3 for _ in range(300 * 400)])
+        g = bm.geometry_from_bytes(_bytes(img))
+        assert g["source"] == "frame"
+        assert g["orientation"] == "portrait" and g["ratio"] == 0.75
+
+
+def _bytes(img) -> bytes:
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
