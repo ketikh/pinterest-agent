@@ -396,3 +396,74 @@ class TestRunTotebagGenerateJob:
         # The tote-bags board (not the laptop board) must be used for totebags.
         _, kwargs = pin.call_args
         assert kwargs.get("board_url") == "https://pin/tote"
+
+
+# ---------------------------------------------------------------------------
+# _get_fallback_reference_url (used when Pinterest is unavailable)
+# ---------------------------------------------------------------------------
+
+class TestFallbackReferenceUrl:
+    def _seed(self):
+        from datetime import datetime, timedelta, timezone
+        from ai_bag_agent.extensions import db
+        from ai_bag_agent.ai_content.models import BagQueue, PendingApproval
+
+        bag = BagQueue(bag_name="B", image_path="https://b.jpg",
+                       product_type="bag", status="done", sort_order=1)
+        tote = BagQueue(bag_name="T", image_path="https://t.jpg",
+                        product_type="totebag", status="done", sort_order=2)
+        db.session.add_all([bag, tote])
+        db.session.commit()
+
+        t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        rows = [
+            # real Pinterest picks for the bag board
+            PendingApproval(tenant_id="default", bag_queue_id=bag.id, status="posted",
+                            reference_pin_id="p1", reference_url="https://i.pinimg.com/1.jpg",
+                            created_at=t0),
+            PendingApproval(tenant_id="default", bag_queue_id=bag.id, status="posted",
+                            reference_pin_id="p2", reference_url="https://i.pinimg.com/2.jpg",
+                            created_at=t0 + timedelta(days=1)),
+            # a later FALLBACK use of url 1 (no pin id) makes url 1 the recent one
+            PendingApproval(tenant_id="default", bag_queue_id=bag.id, status="rejected",
+                            reference_pin_id=None, reference_url="https://i.pinimg.com/1.jpg",
+                            created_at=t0 + timedelta(days=5)),
+            # tote board reference — must never leak into the bag pool
+            PendingApproval(tenant_id="default", bag_queue_id=tote.id, status="posted",
+                            reference_pin_id="t1", reference_url="https://i.pinimg.com/t.jpg",
+                            created_at=t0),
+            # non-pinimg URL is ignored
+            PendingApproval(tenant_id="default", bag_queue_id=bag.id, status="posted",
+                            reference_pin_id="p3", reference_url="https://example.com/x.jpg",
+                            created_at=t0 + timedelta(days=9)),
+        ]
+        db.session.add_all(rows)
+        db.session.commit()
+
+    def test_same_type_only_and_least_recently_used(self, flask_app):
+        self._seed()
+        assert orchestrator._get_fallback_reference_url("default", "bag") == \
+            "https://i.pinimg.com/2.jpg"
+        assert orchestrator._get_fallback_reference_url("default", "totebag") == \
+            "https://i.pinimg.com/t.jpg"
+
+    def test_no_history_returns_none(self, flask_app):
+        self._seed()
+        assert orchestrator._get_fallback_reference_url("default", "necklace") is None
+
+    def test_pipeline_passes_product_type(self, flask_app):
+        from ai_bag_agent.extensions import db
+        from ai_bag_agent.ai_content.models import BagQueue
+        bag = BagQueue(bag_name="tote", image_path="https://x/y.jpg",
+                       product_type="totebag", status="pending", sort_order=1)
+        db.session.add(bag)
+        db.session.commit()
+
+        with patch.object(orchestrator.pinterest_client, "get_random_pin") as pin, \
+             patch.object(orchestrator, "_get_fallback_reference_url", return_value=None) as fb:
+            pin.return_value = {"success": False, "image_url": None, "pin_id": None,
+                                "error": "boom"}
+            result = orchestrator.trigger_for_bag(bag.id)
+
+        assert result["success"] is False
+        fb.assert_called_once_with("default", "totebag")

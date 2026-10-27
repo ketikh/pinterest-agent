@@ -347,7 +347,7 @@ def _run_pipeline_for_bag_inner(bag: BagQueue) -> dict:
         )
         if not pin["success"]:
             _trace_step(bag_id, f"Pinterest FAIL: {pin['error']} — trying fallback reference")
-            fallback = _get_fallback_reference_url(tenant_id)
+            fallback = _get_fallback_reference_url(tenant_id, product_type)
             if fallback:
                 reference_url = fallback
                 reference_pin_id = None
@@ -496,28 +496,46 @@ def _pick_primary_side(bag: BagQueue) -> tuple[str, str]:
     return chosen_url, chosen_side
 
 
-def _get_fallback_reference_url(tenant_id: str = "default") -> Optional[str]:
-    """Return a random image URL from recent approvals when Pinterest is unavailable.
+def _get_fallback_reference_url(
+    tenant_id: str = "default", product_type: str = "bag"
+) -> Optional[str]:
+    """Reference URL from past approvals when Pinterest is unavailable.
 
-    Picks from the 50 most recent approvals that have a direct pinimg.com URL,
-    so we never recycle board-level URLs or empty strings.
+    Each product type has its own Pinterest board, so only approvals of the
+    SAME product type are considered. URLs that were at least once a real
+    Pinterest pick (reference_pin_id set) form the pool, so the fallback can't
+    collapse onto its own recycled output; among those, the least-recently-used
+    URL (counting fallback uses too) is returned so it keeps rotating.
     """
-    import random as _random
     rows = (
-        PendingApproval.query
+        db.session.query(
+            PendingApproval.reference_url,
+            PendingApproval.reference_pin_id,
+            PendingApproval.created_at,
+        )
+        .join(BagQueue, BagQueue.id == PendingApproval.bag_queue_id)
         .filter(
             PendingApproval.tenant_id == tenant_id,
+            BagQueue.product_type == product_type,
             PendingApproval.reference_url.isnot(None),
             PendingApproval.reference_url != "",
         )
-        .order_by(PendingApproval.id.desc())
-        .limit(50)
+        .order_by(PendingApproval.created_at.desc(), PendingApproval.id.desc())
+        .limit(300)
         .all()
     )
-    image_rows = [r for r in rows if r.reference_url and "pinimg.com" in r.reference_url]
-    if not image_rows:
+    last_seen: dict = {}
+    from_pinterest: set = set()
+    for url, pin_id, created in rows:  # newest first
+        if not url or "pinimg.com" not in url:
+            continue
+        last_seen.setdefault(url, created)
+        if pin_id:
+            from_pinterest.add(url)
+    pool = from_pinterest or set(last_seen)
+    if not pool:
         return None
-    return _random.choice(image_rows).reference_url
+    return min(pool, key=lambda u: pinterest_client._to_epoch(last_seen[u]))
 
 
 def _fail(bag: BagQueue, error: str) -> dict:
