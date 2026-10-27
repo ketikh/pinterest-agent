@@ -100,6 +100,7 @@ class TestBoardImageDiagnostics:
         ]
         out = ppi.board_image_diagnostics(pins)
         assert out["usable_in_listing"] == 1 and out["bare"] == 1
+        assert out["image_size_sets"] == {"600x": 1, "(none)": 1}
         assert out["sample"][1] == {
             "id": "b", "is_owner": False, "has_parent": True,
             "media_type": "image", "media_keys": ["images", "media_type"],

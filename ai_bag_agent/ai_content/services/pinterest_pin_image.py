@@ -131,7 +131,18 @@ def board_image_diagnostics(pins: list, test_fallback: bool = True) -> dict:
             "image_sizes": sorted((media.get("images") or {}).keys()),
         })
 
-    out = {"usable_in_listing": usable, "bare": len(pins) - usable, "sample": sample}
+    # Which image-size keys each pin carries, e.g. {"1200x,150x150,400x300,600x": 40,
+    # "150x150,400x300,600x": 13}. Small originals never get a 1200x rendition.
+    size_sets: dict = {}
+    for pin in pins:
+        images = (pin.get("media") or {}).get("images") or {}
+        key = ",".join(sorted(images.keys())) or "(none)"
+        size_sets[key] = size_sets.get(key, 0) + 1
+
+    out = {
+        "usable_in_listing": usable, "bare": len(pins) - usable,
+        "image_size_sets": size_sets, "sample": sample,
+    }
     if test_fallback and first_bare is not None:
         url, source = resolve_pin_image_fallback(first_bare["id"])
         out["fallback_test"] = {
