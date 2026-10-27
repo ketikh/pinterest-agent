@@ -30,3 +30,10 @@ class TestBuildPrompt:
         note = OPEN_BAG_REFERENCE_NOTE.strip()
         assert note in build_prompt(has_open_bag=True)
         assert note not in build_prompt(has_open_bag=False)
+
+    def test_measured_geometry_block_when_known(self):
+        geometry = {"ratio": 0.72, "orientation": "portrait", "box_w": 72, "box_h": 100}
+        prompt = build_prompt(bag_geometry=geometry)
+        assert "MEASURED GEOMETRY OF THE PRIMARY BAG" in prompt
+        assert "0.72 : 1.00" in prompt
+        assert "MEASURED GEOMETRY" not in build_prompt()

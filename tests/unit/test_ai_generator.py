@@ -53,6 +53,14 @@ def _make_poll_response(state: str, result_url: str = GENERATED_URL) -> MagicMoc
 # _resolve_image_url
 # ---------------------------------------------------------------------------
 
+
+@pytest.fixture(autouse=True)
+def _no_geometry_download():
+    """generate_image measures the bag photo over HTTP — never in unit tests."""
+    with patch("ai_bag_agent.ai_content.services.ai_generator.measure_bag_geometry",
+               return_value=None):
+        yield
+
 class TestResolveImageUrl:
     def test_https_url_returned_as_is(self):
         assert _resolve_image_url("https://example.com/bag.jpg") == "https://example.com/bag.jpg"
@@ -249,3 +257,20 @@ class TestGenerateImage:
         required_keys = {"success", "generated_url", "local_path", "model_used",
                          "generation_time_sec", "error"}
         assert required_keys.issubset(result.keys())
+
+
+class TestGeometryInPrompt:
+    @patch.dict("os.environ", {"KIE_AI_API_KEY": "k"})
+    @patch("ai_bag_agent.ai_content.services.ai_generator._download_generated", return_value=None)
+    @patch("ai_bag_agent.ai_content.services.ai_generator._poll_for_result",
+           return_value=("https://out/x.png", None))
+    @patch("ai_bag_agent.ai_content.services.ai_generator._submit_task", return_value="t1")
+    @patch("ai_bag_agent.ai_content.services.ai_generator.measure_bag_geometry")
+    def test_measured_ratio_lands_in_prompt(self, mock_measure, mock_submit, *_):
+        from ai_bag_agent.ai_content.services.ai_generator import generate_image
+        mock_measure.return_value = {"ratio": 0.72, "orientation": "portrait",
+                                     "box_w": 72, "box_h": 100}
+        result = generate_image("https://res.cloudinary.com/x/bag.jpg", "https://i.pinimg.com/r.jpg")
+        assert result["success"] is True
+        mock_measure.assert_called_once_with("https://res.cloudinary.com/x/bag.jpg")
+        assert "0.72 : 1.00" in mock_submit.call_args.kwargs["prompt"]

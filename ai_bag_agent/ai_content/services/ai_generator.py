@@ -21,6 +21,7 @@ from typing import Optional
 import requests
 
 from ..config.prompt_template import build_prompt
+from .bag_metrics import measure_bag_geometry
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +139,13 @@ def generate_image(
     if prompt_override:
         prompt = prompt_override
     else:
-        prompt = build_prompt(custom_prompt, has_open_bag=bool(bag_open_url))
+        # Measure the real bag's width:height from the ORIGINAL (unpadded)
+        # photo and state it in the prompt — a concrete target against
+        # proportion drift. Best-effort: None just omits the block.
+        geometry = measure_bag_geometry(_resolve_image_url(bag_image_path))
+        prompt = build_prompt(
+            custom_prompt, has_open_bag=bool(bag_open_url), bag_geometry=geometry
+        )
     t_start = time.monotonic()
 
     # Step 1 — submit task (with retries for server overload)

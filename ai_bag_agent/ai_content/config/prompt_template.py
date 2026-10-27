@@ -1,5 +1,11 @@
 """Global prompt template for kie.ai Nano Banana Pro image generation."""
 
+from __future__ import annotations
+
+from typing import Optional
+
+from ..services.bag_metrics import describe_geometry
+
 GLOBAL_SYSTEM_PROMPT = """\
 You are a commercial product photographer. Your task is to create a professional \
 advertising photo of the bag shown in the PRIMARY image.
@@ -142,14 +148,22 @@ image. The open photo is for your understanding only, never for rendering.
 """
 
 
-def build_prompt(custom_prompt: str = "", has_open_bag: bool = False) -> str:
+def build_prompt(
+    custom_prompt: str = "",
+    has_open_bag: bool = False,
+    bag_geometry: Optional[dict] = None,
+) -> str:
     """Combine global template with optional per-bag custom prompt.
 
     When `has_open_bag` is True we append a note explaining the third image
     so kie.ai treats it as reference-only and doesn't try to merge an open
-    bag into the final shot.
+    bag into the final shot. `bag_geometry` (from bag_metrics) adds the
+    measured width:height ratio so the model has a number to match.
     """
     parts = [GLOBAL_SYSTEM_PROMPT.strip()]
+    geometry_note = describe_geometry(bag_geometry)
+    if geometry_note:
+        parts.append(f"\n{geometry_note}")
     if has_open_bag:
         parts.append(f"\n{OPEN_BAG_REFERENCE_NOTE.strip()}")
     if custom_prompt and custom_prompt.strip():
