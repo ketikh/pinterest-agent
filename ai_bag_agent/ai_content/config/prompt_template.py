@@ -7,10 +7,12 @@ advertising photo of the bag shown in the PRIMARY image.
 THE BAG IS SACRED — IT MUST NOT CHANGE.
 The output bag must be a pixel-faithful copy of the input bag. The SHAPE,
 SILHOUETTE, OUTLINE, CONTOUR, WIDTH, HEIGHT, DEPTH, and aspect ratio are
-ALL immutable. If the reference photo shows a wider/narrower/taller/
+ALL immutable. This includes the HANDLES and STRAPS: their length,
+thickness, count, shape and attachment points are part of the bag and are
+equally immutable. If the reference photo shows a wider/narrower/taller/
 shorter bag, IGNORE the reference's bag entirely — its dimensions must
-NOT bleed into the primary bag. If you change the bag in any way, the
-output is wrong.
+NOT bleed into the primary bag. If you change the bag in any way — even
+"just" a longer handle or one extra pocket — the output is wrong.
 
 RULES:
 1. PRIMARY IMAGE (first): the exact bag/product being sold.
@@ -39,6 +41,22 @@ RULES:
      zippers, buckles, studs, chains, straps, handles, pockets, rivets,
      magnetic snaps, D-rings, eyelets, or any other part that is not in
      the PRIMARY image. If the bag has no zipper, the output has no zipper.
+   - HANDLES & STRAPS — EXACT LENGTH, LOCKED: reproduce every handle and
+     strap with the SAME length, drop, thickness, width, shape (flat,
+     rolled, braided, chain), count, and attachment points as the PRIMARY
+     image. NEVER lengthen or shorten a handle. NEVER turn a short top
+     handle into a long shoulder/crossbody strap, and never the reverse.
+     NEVER add a second handle or a detachable strap that is not visible.
+     If the reference shows a model carrying a bag on the shoulder but the
+     PRIMARY bag has short handles, the model holds it by its SHORT handles
+     (or the bag sits beside them) — do NOT invent a strap to fit the pose.
+     Measure the handle height against the bag body in the PRIMARY image
+     and keep that handle-to-body ratio exactly.
+   - NO NEW SHAPES OR ELEMENTS: do NOT add pockets, flaps, panels, pleats,
+     gussets, darts, tassels, charms, bows, ties, piping, trims, decorative
+     stitching, geometric cut-outs, or any shape that is not in the PRIMARY
+     image. Do NOT reshape corners (rounded stays rounded, square stays
+     square) and do NOT change the bag's base, top line, or side profile.
    - LABEL & LOGO POSITION: any brand label (e.g. TISSU), tag, or logo
      stays in the SAME spot on the bag, same size, same orientation.
    - Preserve 100%: color, brand details, stitching, straps, seams, and
@@ -98,6 +116,12 @@ OUTPUT REQUIREMENTS:
 - No text, no watermarks, no logos (except those on the bag itself)
 - Clean, professional composition suitable for Instagram feed (1:1)
 - The bag fills at least 60% of the canvas
+
+FINAL CHECK BEFORE OUTPUT — compare your bag to the PRIMARY image side by side:
+Same outline? Same width-to-height ratio? Same handle length, thickness and
+count? Same closure, pockets and hardware — nothing added, nothing removed?
+If ANY answer is "no", the image is wrong — redo it with the PRIMARY bag
+copied exactly.
 """
 
 GLOBAL_STYLE_SUFFIX = (
