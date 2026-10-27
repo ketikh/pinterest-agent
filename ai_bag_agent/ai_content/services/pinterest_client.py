@@ -28,7 +28,18 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://api.pinterest.com/v5"
 TOKEN_URL = "https://api.pinterest.com/v5/oauth/token"
 
-_IMAGE_SIZE_PREFERENCE = ["1200x", "originals", "736x", "564x", "236x"]
+# Pinterest API v5 returns "150x150", "400x300", "600x", "1200x"; the web CDN
+# uses "originals", "736x", "564x", "236x". Largest first.
+_IMAGE_SIZE_PREFERENCE = [
+    "1200x", "originals", "736x", "600x", "564x", "400x300", "236x", "150x150",
+]
+
+# Pins saved from other users often arrive from the board listing with no
+# image URL at all. Each such pin costs up to two extra HTTP requests to
+# recover (see pinterest_pin_image), so cap how many we try per pick.
+MAX_IMAGE_FALLBACK_ATTEMPTS = int(
+    os.environ.get("PINTEREST_IMAGE_FALLBACK_ATTEMPTS", "6")
+)
 
 # Default to a very long window so every used pin stays excluded until we've
 # cycled through the entire board at least once. get_random_pin automatically
@@ -198,23 +209,8 @@ def get_random_pin(
     # rotation keeps working even if a cache write was skipped. No repeat until
     # every pin has been shown, then oldest-first.
     last_used = get_pin_last_used_map(tenant_id)
-    never_used = [p for p in pins if p["id"] not in last_used]
-    if never_used:
-        never_used.sort(key=lambda p: (p.get("created_at") or ""), reverse=True)
-        ordered = never_used
-    else:
-        ordered = sorted(pins, key=lambda p: last_used.get(p["id"], 0.0))
-
-    chosen = None
-    image_url = None
-    for candidate in ordered:
-        try:
-            image_url = get_best_image_url(candidate)
-        except ValueError:
-            continue
-        chosen = candidate
-        break
-
+    ordered = _order_candidates(pins, last_used)
+    chosen, image_url, source = _pick_first_with_image(ordered)
     if chosen is None:
         return _err("No pin with a usable image URL on the board")
 
@@ -223,6 +219,7 @@ def get_random_pin(
     image_url = _to_jpg_url(image_url)
 
     mark_pin_as_used(pin_id, tenant_id)
+    logger.info("Pinterest reference chosen: pin=%s via %s", pin_id, source)
 
     return {
         "success": True,
@@ -234,18 +231,81 @@ def get_random_pin(
     }
 
 
+def _order_candidates(pins: list, last_used: dict) -> list:
+    """Never-used pins first (newest first), then used pins least-recent first.
+
+    Used pins stay at the tail instead of being dropped, so a board whose
+    fresh pins all lack image URLs still yields a reference instead of failing.
+    """
+    never_used = [p for p in pins if p["id"] not in last_used]
+    never_used.sort(key=lambda p: (p.get("created_at") or ""), reverse=True)
+    used = [p for p in pins if p["id"] in last_used]
+    used.sort(key=lambda p: last_used.get(p["id"], 0.0))
+    return never_used + used
+
+
+def _pick_first_with_image(ordered: list) -> tuple:
+    """Return ``(pin, image_url, source)`` for the first candidate with an image.
+
+    Candidates whose listing payload has no image get a slower recovery
+    lookup (pin detail → public pin page), at most MAX_IMAGE_FALLBACK_ATTEMPTS
+    times per pick. Returns ``(None, None, None)`` when nothing works.
+    """
+    from .pinterest_pin_image import resolve_pin_image_fallback
+
+    fallback_budget = MAX_IMAGE_FALLBACK_ATTEMPTS
+    for candidate in ordered:
+        try:
+            return candidate, get_best_image_url(candidate), "listing"
+        except ValueError:
+            pass
+        if fallback_budget <= 0:
+            continue
+        fallback_budget -= 1
+        url, source = resolve_pin_image_fallback(candidate["id"])
+        if url:
+            return candidate, url, source
+    return None, None, None
+
+
 # ---------------------------------------------------------------------------
 # Public: image URL helper
 # ---------------------------------------------------------------------------
 
 def get_best_image_url(pin: dict) -> str:
-    """Return the highest-resolution image URL available for a pin."""
-    images = (pin.get("media") or {}).get("images") or {}
+    """Return the best image URL present in a pin payload.
+
+    Handles every v5 media shape: image pins (``media.images``), video pins
+    (``media.images`` or ``media.cover_image_url``) and carousel / mixed pins
+    (``media.items[*]``). Raises ValueError when the payload carries none —
+    typical for repins; see pinterest_pin_image.resolve_pin_image_fallback.
+    """
+    media = pin.get("media") or {}
+    url = _best_from_images(media.get("images"))
+    if url:
+        return url
+    if media.get("cover_image_url"):
+        return media["cover_image_url"]
+    for item in media.get("items") or []:
+        item = item or {}
+        url = _best_from_images(item.get("images")) or item.get("cover_image_url")
+        if url:
+            return url
+    raise ValueError(f"No image URL found in pin {pin.get('id')}")
+
+
+def _best_from_images(images: Optional[dict]) -> Optional[str]:
+    """Largest usable URL from an ImageSize dict, whatever its key names."""
+    if not images or not isinstance(images, dict):
+        return None
     for size in _IMAGE_SIZE_PREFERENCE:
         entry = images.get(size)
-        if entry and entry.get("url"):
+        if isinstance(entry, dict) and entry.get("url"):
             return entry["url"]
-    raise ValueError(f"No image URL found in pin {pin.get('id')}")
+    with_url = [e for e in images.values() if isinstance(e, dict) and e.get("url")]
+    if not with_url:
+        return None
+    return max(with_url, key=lambda e: e.get("width") or 0)["url"]
 
 
 # ---------------------------------------------------------------------------

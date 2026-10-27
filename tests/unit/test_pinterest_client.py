@@ -192,3 +192,124 @@ class TestGetRandomPin:
         assert result["success"] is True
         assert result["image_url"].endswith(".jpg")
         assert "webp" not in result["image_url"]
+
+
+# ---------------------------------------------------------------------------
+# get_best_image_url — every v5 media shape
+# ---------------------------------------------------------------------------
+
+class TestGetBestImageUrlMediaShapes:
+    def test_api_v5_sizes_without_1200x_pick_600x(self):
+        pin = {"media": {"media_type": "image", "images": {
+            "150x150": {"url": "https://i.pinimg.com/150x150/a/h.jpg", "width": 150},
+            "400x300": {"url": "https://i.pinimg.com/400x300/a/h.jpg", "width": 400},
+            "600x": {"url": "https://i.pinimg.com/600x/a/h.jpg", "width": 600},
+        }}}
+        assert get_best_image_url(pin).startswith("https://i.pinimg.com/600x/")
+
+    def test_video_pin_uses_cover_image(self):
+        pin = {"media": {"media_type": "video",
+                         "cover_image_url": "https://i.pinimg.com/736x/v/cover.jpg"}}
+        assert get_best_image_url(pin) == "https://i.pinimg.com/736x/v/cover.jpg"
+
+    def test_carousel_pin_uses_first_item_with_images(self):
+        pin = {"media": {"media_type": "multiple_images", "items": [
+            {"item_type": "image", "images": {}},
+            {"item_type": "image", "images": {
+                "1200x": {"url": "https://i.pinimg.com/1200x/c/two.jpg"}}},
+        ]}}
+        assert get_best_image_url(pin) == "https://i.pinimg.com/1200x/c/two.jpg"
+
+    def test_unknown_size_keys_pick_widest(self):
+        pin = {"media": {"images": {
+            "small": {"url": "https://i.pinimg.com/s.jpg", "width": 300},
+            "large": {"url": "https://i.pinimg.com/l.jpg", "width": 900},
+        }}}
+        assert get_best_image_url(pin) == "https://i.pinimg.com/l.jpg"
+
+    def test_bare_repin_payload_raises(self):
+        pin = {"id": "repin", "media": {"media_type": "image", "images": {}}}
+        with pytest.raises(ValueError):
+            get_best_image_url(pin)
+
+
+# ---------------------------------------------------------------------------
+# Candidate ordering + repin fallback inside get_random_pin
+# ---------------------------------------------------------------------------
+
+def _pin(pin_id: str, created: str, with_image: bool = True) -> dict:
+    media = {"media_type": "image", "images": {}}
+    if with_image:
+        media["images"] = {"1200x": {"url": f"https://i.pinimg.com/1200x/x/{pin_id}.jpg"}}
+    return {"id": pin_id, "created_at": created, "media": media}
+
+
+class TestOrderCandidates:
+    def test_never_used_newest_first_then_used_least_recent_first(self):
+        from ai_bag_agent.ai_content.services.pinterest_client import _order_candidates
+        pins = [
+            _pin("old_fresh", "2026-01-01T00:00:00"),
+            _pin("new_fresh", "2026-06-01T00:00:00"),
+            _pin("used_recent", "2025-01-01T00:00:00"),
+            _pin("used_long_ago", "2025-01-01T00:00:00"),
+        ]
+        last_used = {"used_recent": 200.0, "used_long_ago": 100.0}
+        ordered = [p["id"] for p in _order_candidates(pins, last_used)]
+        assert ordered == ["new_fresh", "old_fresh", "used_long_ago", "used_recent"]
+
+
+class TestGetRandomPinRepinFallback:
+    @patch.dict("os.environ", {"PINTEREST_ACCESS_TOKEN": FAKE_TOKEN})
+    @patch("ai_bag_agent.ai_content.services.pinterest_pin_image.resolve_pin_image_fallback")
+    @patch("ai_bag_agent.ai_content.services.pinterest_client.get_board_id_from_url")
+    @patch("ai_bag_agent.ai_content.services.pinterest_client.get_pins_from_board")
+    def test_bare_pin_recovered_via_fallback(self, mock_pins, mock_board_id, mock_resolve):
+        mock_board_id.return_value = "123456789"
+        mock_pins.return_value = [_pin("repin_1", "2026-06-01", with_image=False)]
+        mock_resolve.return_value = ("https://i.pinimg.com/736x/r/one.jpg", "pin-page")
+
+        result = get_random_pin(BOARD_URL)
+
+        assert result["success"] is True
+        assert result["pin_id"] == "repin_1"
+        assert result["image_url"] == "https://i.pinimg.com/736x/r/one.jpg"
+        mock_resolve.assert_called_once_with("repin_1")
+
+    @patch.dict("os.environ", {"PINTEREST_ACCESS_TOKEN": FAKE_TOKEN})
+    @patch("ai_bag_agent.ai_content.services.pinterest_pin_image.resolve_pin_image_fallback")
+    @patch("ai_bag_agent.ai_content.services.pinterest_client.get_pin_last_used_map")
+    @patch("ai_bag_agent.ai_content.services.pinterest_client.get_board_id_from_url")
+    @patch("ai_bag_agent.ai_content.services.pinterest_client.get_pins_from_board")
+    def test_used_pin_with_image_beats_failing_fresh_repin(
+        self, mock_pins, mock_board_id, mock_last_used, mock_resolve
+    ):
+        mock_board_id.return_value = "123456789"
+        mock_pins.return_value = [
+            _pin("repin_fresh", "2026-06-01", with_image=False),
+            _pin("own_used", "2026-01-01", with_image=True),
+        ]
+        mock_last_used.return_value = {"own_used": 1.0}
+        mock_resolve.return_value = (None, None)
+
+        result = get_random_pin(BOARD_URL)
+
+        assert result["success"] is True
+        assert result["pin_id"] == "own_used"
+
+    @patch.dict("os.environ", {"PINTEREST_ACCESS_TOKEN": FAKE_TOKEN})
+    @patch("ai_bag_agent.ai_content.services.pinterest_client.MAX_IMAGE_FALLBACK_ATTEMPTS", 2)
+    @patch("ai_bag_agent.ai_content.services.pinterest_pin_image.resolve_pin_image_fallback")
+    @patch("ai_bag_agent.ai_content.services.pinterest_client.get_board_id_from_url")
+    @patch("ai_bag_agent.ai_content.services.pinterest_client.get_pins_from_board")
+    def test_fallback_attempts_are_capped(self, mock_pins, mock_board_id, mock_resolve):
+        mock_board_id.return_value = "123456789"
+        mock_pins.return_value = [
+            _pin(f"repin_{i}", f"2026-0{i + 1}-01", with_image=False) for i in range(5)
+        ]
+        mock_resolve.return_value = (None, None)
+
+        result = get_random_pin(BOARD_URL)
+
+        assert result["success"] is False
+        assert "usable image" in result["error"].lower()
+        assert mock_resolve.call_count == 2

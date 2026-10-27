@@ -167,6 +167,19 @@ def create_app(config_override: Optional[Dict] = None) -> Flask:
                             "with_created_at": sum(
                                 1 for p in pins if p.get("created_at")),
                         }
+                        # How many listed pins actually carry an image URL,
+                        # plus a live probe of the repin fallback
+                        # (/health/db?pins=1&fallback=0 skips the probe).
+                        try:
+                            from .ai_content.services.pinterest_pin_image import (
+                                board_image_diagnostics,
+                            )
+                            out[name].update(board_image_diagnostics(
+                                pins,
+                                test_fallback=_req.args.get("fallback", "1") != "0",
+                            ))
+                        except Exception as exc:
+                            out[name]["image_diag_error"] = repr(exc)
                     info["boards"] = out
                     info["recent_pin_cache_count"] = (
                         db.session.query(RecentPinCache).count())
