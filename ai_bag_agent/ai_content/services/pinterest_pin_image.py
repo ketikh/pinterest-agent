@@ -106,6 +106,14 @@ def parse_og_image(html: str) -> Optional[str]:
 # Diagnostics (used by /health/db?pins=1)
 # ---------------------------------------------------------------------------
 
+def image_key(url: Optional[str]) -> str:
+    """Content hash of a pinimg URL (its file name without extension/size)."""
+    if not url:
+        return ""
+    name = url.rsplit("/", 1)[-1]
+    return name.split(".")[0]
+
+
 def board_image_diagnostics(pins: list, test_fallback: bool = True) -> dict:
     """Summarise how many listed pins carry an image URL, with a small
     sample of media shapes and (optionally) a live fallback probe for the
@@ -139,8 +147,20 @@ def board_image_diagnostics(pins: list, test_fallback: bool = True) -> dict:
         key = ",".join(sorted(images.keys())) or "(none)"
         size_sets[key] = size_sets.get(key, 0) + 1
 
+    # Several pins can carry the SAME image (re-saved duplicates). pinimg URLs
+    # end in /<content-hash>.<ext>, so group pins by that hash.
+    by_image: dict = {}
+    for pin in pins:
+        try:
+            url = pc.get_best_image_url(pin)
+        except ValueError:
+            continue
+        by_image.setdefault(image_key(url), []).append(pin.get("id"))
+
     out = {
         "usable_in_listing": usable, "bare": len(pins) - usable,
+        "distinct_images": len(by_image),
+        "duplicate_groups": [ids for ids in by_image.values() if len(ids) > 1],
         "image_size_sets": size_sets, "sample": sample,
     }
     if test_fallback and first_bare is not None:

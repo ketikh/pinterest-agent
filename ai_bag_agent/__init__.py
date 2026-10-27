@@ -137,6 +137,35 @@ def create_app(config_override: Optional[Dict] = None) -> Flask:
         except Exception as exc:
             info["diag_error"] = str(exc)
 
+        # Which reference each recent approval used (pin id + image hash),
+        # to tell "same pin again" from "different pins, same picture".
+        try:
+            from .ai_content.models import BagQueue, PendingApproval
+            from .ai_content.services.pinterest_pin_image import image_key
+            with app.app_context():
+                refs = (
+                    db.session.query(
+                        PendingApproval.id, BagQueue.product_type,
+                        PendingApproval.reference_pin_id,
+                        PendingApproval.reference_url, PendingApproval.created_at,
+                    )
+                    .join(BagQueue, BagQueue.id == PendingApproval.bag_queue_id)
+                    .order_by(PendingApproval.id.desc())
+                    .limit(20)
+                    .all()
+                )
+                info["recent_references"] = [
+                    {
+                        "approval": r[0], "type": r[1],
+                        "pin_id": r[2] or "(fallback/manual)",
+                        "image": image_key(r[3])[:12],
+                        "at": r[4].isoformat()[:16] if r[4] else None,
+                    }
+                    for r in refs
+                ]
+        except Exception as exc:
+            info["recent_references_error"] = str(exc)
+
         # Pinterest board pin counts — only when explicitly requested
         # (/health/db?pins=1), since it hits the Pinterest API.
         from flask import request as _req
